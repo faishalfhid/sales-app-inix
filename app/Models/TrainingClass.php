@@ -49,67 +49,58 @@ class TrainingClass extends Model
         'end_date' => 'date',
     ];
 
-    /**
-     * Relasi ke scenario
-     */
+    /* ================= RELATIONS ================= */
+
     public function scenario(): BelongsTo
     {
         return $this->belongsTo(Scenario::class);
     }
 
-    /**
-     * Relasi ke class cost details
-     */
     public function costDetails(): HasMany
     {
         return $this->hasMany(ClassCostDetail::class, 'training_class_id');
     }
 
-    /**
-     * Calculate total real cost
-     */
-    public function calculateRealCost()
+    /* ================= COST CALCULATION ================= */
+
+    public function calculateRealCost(): float
     {
-        return $this->costDetails()
-            ->whereHas('costComponent', function($query) {
-                $query->where('nature', 'R');
-            })
-            ->sum('subtotal');
+        return $this->costDetails
+            ->filter(fn ($d) => $d->costComponent?->nature === 'R')
+            ->sum(fn ($d) => ($d->unit ?? 0) * ($d->unit_cost ?? 0));
     }
 
-    /**
-     * Calculate total pass cost
-     */
-    public function calculatePassCost()
+    public function calculatePassCost(): float
     {
-        return $this->costDetails()
-            ->whereHas('costComponent', function($query) {
-                $query->where('nature', 'L');
-            })
-            ->sum('subtotal');
+        return $this->costDetails
+            ->filter(fn ($d) => $d->costComponent?->nature === 'L')
+            ->sum(fn ($d) => ($d->unit ?? 0) * ($d->unit_cost ?? 0));
     }
 
-    /**
-     * Recalculate semua nilai
-     */
-    public function recalculate()
+    /* ================= MAIN RECALCULATE ================= */
+
+    public function recalculate(): void
     {
-        $this->price_after_discount = $this->price_per_participant - $this->discount;
-        $this->total_revenue = $this->price_after_discount * $this->participant_count;
-        $this->real_revenue = $this->price_per_participant * $this->participant_count;
+        $participant = $this->participant_count ?? 0;
+        $price = $this->price_per_participant ?? 0;
+        $discount = $this->discount ?? 0;
+
+        $this->real_revenue = $price * $participant;
+        $this->price_after_discount = max($price - $discount, 0);
+        $this->total_revenue = $this->price_after_discount * $participant;
+
         $this->total_cost = $this->calculateRealCost() + $this->calculatePassCost();
         $this->net_profit = $this->real_revenue - $this->total_cost;
-        
-        if ($this->real_revenue > 0) {
-            $this->net_profit_margin = ($this->net_profit / $this->real_revenue) * 100;
-        }
-        
-        $this->save();
+
+        $this->net_profit_margin = $this->real_revenue > 0
+            ? ($this->net_profit / $this->real_revenue) * 100
+            : 0;
+
+        $this->saveQuietly();
     }
 
-    /**
-     * Scope untuk status tertentu
-     */
+    /* ================= SCOPE ================= */
+
     public function scopeByStatus($query, $status)
     {
         return $query->where('status', $status);

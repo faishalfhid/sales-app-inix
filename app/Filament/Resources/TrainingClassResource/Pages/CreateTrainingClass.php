@@ -14,6 +14,12 @@ class CreateTrainingClass extends CreateRecord
     
     protected static string $resource = TrainingClassResource::class;
 
+    protected function afterSave(): void
+{
+    $this->record->load('costDetails.costComponent');
+    $this->record->recalculate();
+}
+
     protected function getSteps(): array
     {
         return [

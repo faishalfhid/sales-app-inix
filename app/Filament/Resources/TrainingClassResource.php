@@ -11,6 +11,9 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Filament\Forms\Get;
+use Filament\Forms\Components\Tabs;
+use Filament\Forms\Components\Repeater;
 
 class TrainingClassResource extends Resource
 {
@@ -20,6 +23,71 @@ class TrainingClassResource extends Resource
     protected static ?int $navigationSort = 1;
     protected static ?string $label = 'Kelas Pelatihan';
     protected static ?string $navigationLabel = 'Kelas Pelatihan';
+
+    protected static function categoryTotal(Get $get, $componentIds): int
+    {
+        return collect($get('costDetails') ?? [])
+            ->filter(
+                fn($item) =>
+                in_array($item['cost_component_id'] ?? null, $componentIds)
+            )
+            ->sum(
+                fn($item) =>
+                ((int) ($item['unit'] ?? 0)) *
+                ((int) ($item['unit_cost'] ?? 0))
+            );
+    }
+
+
+    protected static function costCategories()
+    {
+        return \App\Models\Category::with('costComponents')->get();
+    }
+
+
+    protected static function costDetailSchema(): array
+    {
+        return [
+            Forms\Components\Hidden::make('cost_component_id'),
+
+            Forms\Components\Placeholder::make('component')
+                ->label('Komponen Biaya')
+                ->content(
+                    fn(Forms\Get $get, $record) =>
+                    $record
+                    ? $record->costComponent?->name
+                    : \App\Models\CostComponent::find($get('cost_component_id'))?->name
+                ),
+
+            Forms\Components\Grid::make(2)
+                ->schema([
+                    Forms\Components\TextInput::make('unit')
+                        ->numeric()
+                        ->default(0)
+                        ->live(),
+
+                    Forms\Components\TextInput::make('unit_cost')
+                        ->numeric()
+                        ->prefix('Rp')
+                        ->default(0)
+                        ->live(),
+                ]),
+
+            Forms\Components\Placeholder::make('subtotal_preview')
+                ->label('Subtotal')
+                ->content(
+                    fn(Forms\Get $get) =>
+                    'Rp ' . number_format(
+                        ((int) $get('unit')) * ((int) $get('unit_cost')),
+                        0,
+                        ',',
+                        '.'
+                    )
+                )
+                ->live(),
+        ];
+    }
+
 
 
     public static function form(Form $form): Form
@@ -118,60 +186,36 @@ class TrainingClassResource extends Resource
                             ->required(),
                     ])
                     ->columns(3),
+
                 Forms\Components\Section::make('Detail Biaya')
                     ->schema([
-                        Forms\Components\Repeater::make('costDetails')
-                            ->label('')
-                            ->relationship()
-                            ->schema([
-                                Forms\Components\Hidden::make('cost_component_id'),
+                        Tabs::make('Cost Categories')
+                            ->tabs(
+                                self::costCategories()->map(function ($category) {
 
-                                Forms\Components\Placeholder::make('component')
-                                    ->label('Komponen Biaya')
-                                    ->content(function (Forms\Get $get, $record) {
-                                        if ($record) {
-                                            return $record->costComponent?->name ?? '-';
-                                        }
+                                    $componentIds = $category->costComponents->pluck('id')->toArray();
 
-                                        // mode create / setelah ganti scenario
-                                        if ($get('cost_component_id')) {
-                                            return \App\Models\CostComponent::find($get('cost_component_id'))?->name ?? '-';
-                                        }
+                                    return Tabs\Tab::make($category->name) // ✅ STRING
+                                        ->badge(function (Get $get) use ($componentIds) {
+                                            $total = self::categoryTotal($get, $componentIds);
 
-                                        return '-';
-                                    }),
-
-                                Forms\Components\Grid::make(2)
-                                    ->schema([
-                                        Forms\Components\TextInput::make('unit')
-                                            ->numeric()
-                                            ->default(0)
-                                            ->live(),
-
-                                        Forms\Components\TextInput::make('unit_cost')
-                                            ->numeric()
-                                            ->prefix('Rp')
-                                            ->required()
-                                            ->live(),
-                                    ]),
-
-                                Forms\Components\Placeholder::make('subtotal_preview')
-                                    ->label('Preview Subtotal')
-                                    ->content(function (Forms\Get $get) {
-                                        $unit = (int) ($get('unit') ?: 0);
-                                        $unitCost = (float) ($get('unit_cost') ?: 0);
-
-                                        $subtotal = $unit * $unitCost;
-
-                                        return 'Rp ' . number_format($subtotal, 0, ',', '.');
-                                    })
-                                    ->live(),
-                            ])
-                            ->columns(1)
-                            ->disableItemCreation()
-                            ->disableItemDeletion(),
+                                            return $total > 0
+                                                ? 'Rp ' . number_format($total, 0, ',', '.')
+                                                : null;
+                                        })
+                                        ->schema([
+                                            Repeater::make('costDetails')
+                                                ->relationship()
+                                                ->schema(self::costDetailSchema())
+                                                ->disableItemCreation()
+                                                ->disableItemDeletion()
+                                                ->columns(1)
+                                                ->itemLabel(fn($state) => null)
+                                                
+                                        ]);
+                                })->toArray()
+                            ),
                     ]),
-
             ]);
     }
 
