@@ -24,6 +24,144 @@ class TrainingClassResource extends Resource
     protected static ?string $label = 'Kelas Pelatihan';
     protected static ?string $navigationLabel = 'Kelas Pelatihan';
 
+    // Method untuk kalkulasi total cost
+    public static function calculateTotalCost(Get $get, $scenarioId = null): int
+    {
+        if (!$scenarioId) {
+            $scenarioId = $get('scenario_id');
+        }
+
+        if (!$scenarioId) {
+            return 0;
+        }
+
+        $components = CostComponent::query()
+            ->whereHas('scenarioRules', fn($q) => 
+                $q->where('scenario_id', $scenarioId)
+            )
+            ->get();
+
+        $total = 0;
+        foreach ($components as $component) {
+            $unit = (int) ($get("unit_{$component->id}") ?? 0);
+            $unitCost = (int) ($get("unit_cost_{$component->id}") ?? 0);
+            $total += $unit * $unitCost;
+        }
+
+        return $total;
+    }
+
+    // Method untuk kalkulasi revenue
+    public static function calculateRevenue(Get $get): int
+    {
+        $participantCount = (int) ($get('participant_count') ?? 0);
+        $pricePerParticipant = (int) ($get('price_per_participant') ?? 0);
+        $discount = (int) ($get('discount') ?? 0);
+
+        return ($participantCount * $pricePerParticipant) - $discount;
+    }
+
+    // Method untuk kalkulasi net profit
+    public static function calculateNetProfit(Get $get, $scenarioId = null): int
+    {
+        $revenue = self::calculateRevenue($get);
+        $totalCost = self::calculateTotalCost($get, $scenarioId);
+
+        return $revenue - $totalCost;
+    }
+
+    // Schema untuk summary section
+    public static function getSummarySchema(): array
+    {
+        return [
+            Forms\Components\Section::make('Ringkasan Keuangan')
+                ->schema([
+                    Forms\Components\Grid::make(3)
+                        ->schema([
+                            Forms\Components\Placeholder::make('total_cost_display')
+                                ->label('Total Biaya')
+                                ->content(function (Get $get) {
+                                    $total = self::calculateTotalCost($get);
+                                    return 'Rp ' . number_format($total, 0, ',', '.');
+                                })
+                                ->live(),
+
+                            Forms\Components\Placeholder::make('revenue_display')
+                                ->label('Total Revenue')
+                                ->content(function (Get $get) {
+                                    $revenue = self::calculateRevenue($get);
+                                    return 'Rp ' . number_format($revenue, 0, ',', '.');
+                                })
+                                ->live(),
+
+                            Forms\Components\Placeholder::make('net_profit_display')
+                                ->label('Net Profit')
+                                ->content(function (Get $get) {
+                                    $profit = self::calculateNetProfit($get);
+                                    $color = $profit >= 0 ? 'success' : 'danger';
+                                    $symbol = $profit >= 0 ? '+' : '';
+                                    
+                                    return new \Illuminate\Support\HtmlString(
+                                        '<span class="text-' . $color . '-600 font-bold text-lg">' .
+                                        $symbol . 'Rp ' . number_format($profit, 0, ',', '.') .
+                                        '</span>'
+                                    );
+                                })
+                                ->live(),
+                        ]),
+
+                    Forms\Components\Grid::make(3)
+                        ->schema([
+                            Forms\Components\Placeholder::make('profit_margin_display')
+                                ->label('Profit Margin')
+                                ->content(function (Get $get) {
+                                    $revenue = self::calculateRevenue($get);
+                                    $profit = self::calculateNetProfit($get);
+                                    
+                                    if ($revenue == 0) {
+                                        return '0%';
+                                    }
+                                    
+                                    $margin = ($profit / $revenue) * 100;
+                                    $color = $margin >= 0 ? 'success' : 'danger';
+                                    
+                                    return new \Illuminate\Support\HtmlString(
+                                        '<span class="text-' . $color . '-600 font-semibold">' .
+                                        number_format($margin, 2) . '%' .
+                                        '</span>'
+                                    );
+                                })
+                                ->live(),
+
+                            Forms\Components\Placeholder::make('price_per_participant_display')
+                                ->label('Harga per Peserta')
+                                ->content(function (Get $get) {
+                                    $price = (int) ($get('price_per_participant') ?? 0);
+                                    return 'Rp ' . number_format($price, 0, ',', '.');
+                                })
+                                ->live(),
+
+                            Forms\Components\Placeholder::make('cost_per_participant_display')
+                                ->label('Biaya per Peserta')
+                                ->content(function (Get $get) {
+                                    $participantCount = (int) ($get('participant_count') ?? 0);
+                                    $totalCost = self::calculateTotalCost($get);
+                                    
+                                    if ($participantCount == 0) {
+                                        return 'Rp 0';
+                                    }
+                                    
+                                    $costPerParticipant = $totalCost / $participantCount;
+                                    return 'Rp ' . number_format($costPerParticipant, 0, ',', '.');
+                                })
+                                ->live(),
+                        ]),
+                ])
+                ->collapsible()
+                ->collapsed(false),
+        ];
+    }
+
     public static function costDetailSchemaForComponent($component): array
     {
         return [
@@ -37,14 +175,14 @@ class TrainingClassResource extends Resource
                         ->label('Unit')
                         ->numeric()
                         ->default(0)
-                        ->live(),
+                        ->live(onBlur: true),
 
                     Forms\Components\TextInput::make("unit_cost_{$component->id}")
                         ->label('Harga Satuan')
                         ->numeric()
                         ->prefix('Rp')
                         ->default(0)
-                        ->live(),
+                        ->live(onBlur: true),
 
                     Forms\Components\Placeholder::make("subtotal_{$component->id}")
                         ->label('Subtotal')
@@ -66,21 +204,18 @@ class TrainingClassResource extends Resource
         ];
     }
 
-    // Mendapatkan categories dengan cost components yang sesuai scenario
     public static function costCategoriesForScenario($scenarioId = null)
     {
         if (!$scenarioId) {
             return collect([]);
         }
 
-        // Ambil cost components yang terkait dengan scenario
         $componentIds = CostComponent::query()
             ->whereHas('scenarioRules', fn($q) => 
                 $q->where('scenario_id', $scenarioId)
             )
             ->pluck('id');
 
-        // Ambil categories yang memiliki components dari scenario ini
         return \App\Models\Category::with(['costComponents' => function($query) use ($componentIds) {
             $query->whereIn('id', $componentIds);
         }])
@@ -143,7 +278,8 @@ class TrainingClassResource extends Resource
                             ->label('Jumlah Peserta')
                             ->numeric()
                             ->default(0)
-                            ->required(),
+                            ->required()
+                            ->live(onBlur: true),
 
                         Forms\Components\DatePicker::make('start_date')
                             ->label('Tanggal Mulai'),
@@ -159,13 +295,15 @@ class TrainingClassResource extends Resource
                             ->label('Harga Real/Peserta')
                             ->numeric()
                             ->prefix('Rp')
-                            ->required(),
+                            ->required()
+                            ->live(onBlur: true),
 
                         Forms\Components\TextInput::make('discount')
                             ->label('Diskon')
                             ->numeric()
                             ->prefix('Rp')
-                            ->default(0),
+                            ->default(0)
+                            ->live(onBlur: true),
 
                         Forms\Components\Select::make('status')
                             ->options([
@@ -180,6 +318,9 @@ class TrainingClassResource extends Resource
                             ->required(),
                     ])
                     ->columns(3),
+
+                // Summary Section
+                ...self::getSummarySchema(),
 
                 Forms\Components\Section::make('Detail Biaya')
                     ->schema([

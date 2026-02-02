@@ -24,28 +24,24 @@ class CreateTrainingClass extends CreateRecord
             return $data;
         }
 
-        // Ambil hanya cost components yang terkait dengan scenario
         $components = CostComponent::query()
             ->whereHas('scenarioRules', fn($q) => 
                 $q->where('scenario_id', $scenarioId)
             )
             ->get();
         
-        // Simpan data cost details untuk diproses setelah record dibuat
         $this->costDetailsData = [];
         
         foreach ($components as $component) {
             $unit = $data["unit_{$component->id}"] ?? 0;
             $unitCost = $data["unit_cost_{$component->id}"] ?? 0;
             
-            // Simpan cost detail
             $this->costDetailsData[] = [
                 'cost_component_id' => $component->id,
                 'unit' => $unit,
                 'unit_cost' => $unitCost,
             ];
             
-            // Bersihkan dari data utama
             unset($data["unit_{$component->id}"]);
             unset($data["unit_cost_{$component->id}"]);
             unset($data["cost_component_id_{$component->id}"]);
@@ -56,14 +52,12 @@ class CreateTrainingClass extends CreateRecord
 
     protected function afterCreate(): void
     {
-        // Simpan cost details
         if (!empty($this->costDetailsData)) {
             foreach ($this->costDetailsData as $detailData) {
                 $this->record->costDetails()->create($detailData);
             }
         }
         
-        // Recalculate
         $this->record->load('costDetails.costComponent');
         $this->record->recalculate();
     }
@@ -114,7 +108,8 @@ class CreateTrainingClass extends CreateRecord
                         ->label('Jumlah Peserta')
                         ->numeric()
                         ->default(0)
-                        ->required(),
+                        ->required()
+                        ->live(onBlur: true),
                         
                     Forms\Components\DatePicker::make('start_date')
                         ->label('Tanggal Mulai'),
@@ -130,13 +125,15 @@ class CreateTrainingClass extends CreateRecord
                         ->label('Harga Real/Peserta')
                         ->numeric()
                         ->prefix('Rp')
-                        ->required(),
+                        ->required()
+                        ->live(onBlur: true),
                         
                     Forms\Components\TextInput::make('discount')
                         ->label('Diskon')
                         ->numeric()
                         ->prefix('Rp')
-                        ->default(0),
+                        ->default(0)
+                        ->live(onBlur: true),
                         
                     Forms\Components\Select::make('status')
                         ->options([
@@ -193,6 +190,10 @@ class CreateTrainingClass extends CreateRecord
                                 })->toArray();
                         }),
                 ]),
+
+            Step::make('Ringkasan')
+                ->schema(TrainingClassResource::getSummarySchema())
+                ->columns(1),
         ];
     }
 }
