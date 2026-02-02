@@ -5,6 +5,7 @@ namespace App\Filament\Resources\TrainingClassResource\Pages;
 use App\Filament\Resources\TrainingClassResource;
 use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
+use App\Models\CostComponent;
 
 class EditTrainingClass extends EditRecord
 {
@@ -26,8 +27,18 @@ class EditTrainingClass extends EditRecord
 
     protected function mutateFormDataBeforeSave(array $data): array
     {
-        // Ambil semua cost components
-        $components = \App\Models\CostComponent::all();
+        $scenarioId = $data['scenario_id'] ?? $this->record->scenario_id;
+        
+        if (!$scenarioId) {
+            return $data;
+        }
+
+        // Ambil hanya cost components yang terkait dengan scenario
+        $components = CostComponent::query()
+            ->whereHas('scenarioRules', fn($q) => 
+                $q->where('scenario_id', $scenarioId)
+            )
+            ->get();
         
         // Simpan untuk after save
         $this->costDetailsData = [];
@@ -52,6 +63,19 @@ class EditTrainingClass extends EditRecord
 
     protected function afterSave(): void
     {
+        // Hapus cost details lama yang tidak sesuai scenario
+        $scenarioId = $this->record->scenario_id;
+        $validComponentIds = CostComponent::query()
+            ->whereHas('scenarioRules', fn($q) => 
+                $q->where('scenario_id', $scenarioId)
+            )
+            ->pluck('id');
+        
+        // Hapus cost details yang tidak valid untuk scenario ini
+        $this->record->costDetails()
+            ->whereNotIn('cost_component_id', $validComponentIds)
+            ->delete();
+
         // Update atau create cost details
         if (!empty($this->costDetailsData)) {
             foreach ($this->costDetailsData as $componentId => $detailData) {

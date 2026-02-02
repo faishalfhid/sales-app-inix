@@ -8,6 +8,7 @@ use Filament\Resources\Pages\CreateRecord\Concerns\HasWizard;
 use Filament\Forms\Components\Wizard\Step;
 use Filament\Forms;
 use Filament\Forms\Components\Tabs;
+use App\Models\CostComponent;
 
 class CreateTrainingClass extends CreateRecord
 {
@@ -17,8 +18,18 @@ class CreateTrainingClass extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        // Ambil semua cost components
-        $components = \App\Models\CostComponent::all();
+        $scenarioId = $data['scenario_id'] ?? null;
+        
+        if (!$scenarioId) {
+            return $data;
+        }
+
+        // Ambil hanya cost components yang terkait dengan scenario
+        $components = CostComponent::query()
+            ->whereHas('scenarioRules', fn($q) => 
+                $q->where('scenario_id', $scenarioId)
+            )
+            ->get();
         
         // Simpan data cost details untuk diproses setelah record dibuat
         $this->costDetailsData = [];
@@ -27,7 +38,7 @@ class CreateTrainingClass extends CreateRecord
             $unit = $data["unit_{$component->id}"] ?? 0;
             $unitCost = $data["unit_cost_{$component->id}"] ?? 0;
             
-            // Simpan semua, bahkan yang 0, untuk konsistensi
+            // Simpan cost detail
             $this->costDetailsData[] = [
                 'cost_component_id' => $component->id,
                 'unit' => $unit,
@@ -63,9 +74,10 @@ class CreateTrainingClass extends CreateRecord
             Step::make('Informasi Dasar')
                 ->schema([
                     Forms\Components\Select::make('scenario_id')
+                        ->label('Skenario Pelatihan')
                         ->relationship('scenario', 'name')
                         ->required()
-                        ->reactive()
+                        ->live()
                         ->searchable()
                         ->preload()
                         ->columnSpanFull(),
@@ -139,34 +151,47 @@ class CreateTrainingClass extends CreateRecord
                 
             Step::make('Detail Biaya')
                 ->schema([
+                    Forms\Components\Placeholder::make('scenario_warning')
+                        ->label('')
+                        ->content('Pastikan Anda telah memilih Skenario Pelatihan di Step 1')
+                        ->visible(fn(Forms\Get $get) => !$get('scenario_id')),
+
                     Tabs::make('Cost Categories')
-                        ->tabs(
-                            TrainingClassResource::costCategories()->map(function ($category) {
-                                return Tabs\Tab::make($category->name)
-                                    ->badge(function (Forms\Get $get) use ($category) {
-                                        $total = 0;
-                                        foreach ($category->costComponents as $component) {
-                                            $unit = (int) ($get("unit_{$component->id}") ?? 0);
-                                            $unitCost = (int) ($get("unit_cost_{$component->id}") ?? 0);
-                                            $total += $unit * $unitCost;
-                                        }
-                                        
-                                        return $total > 0
-                                            ? 'Rp ' . number_format($total, 0, ',', '.')
-                                            : null;
-                                    })
-                                    ->schema([
-                                        Forms\Components\Grid::make(1)
-                                            ->schema(
-                                                collect($category->costComponents)->map(function ($component) {
-                                                    return Forms\Components\Group::make()
-                                                        ->schema(TrainingClassResource::costDetailSchemaForComponent($component))
-                                                        ->columnSpanFull();
-                                                })->toArray()
-                                            )
-                                    ]);
-                            })->toArray()
-                        ),
+                        ->visible(fn(Forms\Get $get) => $get('scenario_id') !== null)
+                        ->tabs(function (Forms\Get $get) {
+                            $scenarioId = $get('scenario_id');
+                            
+                            if (!$scenarioId) {
+                                return [];
+                            }
+
+                            return TrainingClassResource::costCategoriesForScenario($scenarioId)
+                                ->map(function ($category) use ($get) {
+                                    return Tabs\Tab::make($category->name)
+                                        ->badge(function () use ($category, $get) {
+                                            $total = 0;
+                                            foreach ($category->costComponents as $component) {
+                                                $unit = (int) ($get("unit_{$component->id}") ?? 0);
+                                                $unitCost = (int) ($get("unit_cost_{$component->id}") ?? 0);
+                                                $total += $unit * $unitCost;
+                                            }
+                                            
+                                            return $total > 0
+                                                ? 'Rp ' . number_format($total, 0, ',', '.')
+                                                : null;
+                                        })
+                                        ->schema([
+                                            Forms\Components\Grid::make(1)
+                                                ->schema(
+                                                    collect($category->costComponents)->map(function ($component) {
+                                                        return Forms\Components\Group::make()
+                                                            ->schema(TrainingClassResource::costDetailSchemaForComponent($component))
+                                                            ->columnSpanFull();
+                                                    })->toArray()
+                                                )
+                                        ]);
+                                })->toArray();
+                        }),
                 ]),
         ];
     }

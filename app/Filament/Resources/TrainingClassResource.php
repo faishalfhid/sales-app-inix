@@ -25,119 +25,70 @@ class TrainingClassResource extends Resource
     protected static ?string $navigationLabel = 'Kelas Pelatihan';
 
     public static function costDetailSchemaForComponent($component): array
-{
-    return [
-        Forms\Components\Placeholder::make("component_name_{$component->id}")
-            ->label('Komponen Biaya')
-            ->content($component->name),
-        
-        Forms\Components\Grid::make(3)
-            ->schema([
-                Forms\Components\TextInput::make("unit_{$component->id}")
-                    ->label('Unit')
-                    ->numeric()
-                    ->default(0)
-                    ->live(),
-
-                Forms\Components\TextInput::make("unit_cost_{$component->id}")
-                    ->label('Harga Satuan')
-                    ->numeric()
-                    ->prefix('Rp')
-                    ->default(0)
-                    ->live(),
-
-                Forms\Components\Placeholder::make("subtotal_{$component->id}")
-                    ->label('Subtotal')
-                    ->content(
-                        fn(Forms\Get $get) =>
-                        'Rp ' . number_format(
-                            ((int) ($get("unit_{$component->id}") ?? 0)) * 
-                            ((int) ($get("unit_cost_{$component->id}") ?? 0)),
-                            0,
-                            ',',
-                            '.'
-                        )
-                    )
-                    ->live(),
-            ]),
-        
-        Forms\Components\Hidden::make("cost_component_id_{$component->id}")
-            ->default($component->id),
-    ];
-}
-
-    protected static function updateCostDetail($componentId, $get, $set): void
-    {
-        // Method ini bisa digunakan untuk sinkronisasi data jika diperlukan
-    }
-
-    protected static function categoryTotal(Get $get, $componentIds): int
-    {
-        return collect($get('costDetails') ?? [])
-            ->filter(
-                fn($item) =>
-                in_array($item['cost_component_id'] ?? null, $componentIds)
-            )
-            ->sum(
-                fn($item) =>
-                ((int) ($item['unit'] ?? 0)) *
-                ((int) ($item['unit_cost'] ?? 0))
-            );
-    }
-
-
-    public static function costCategories()
-    {
-        return \App\Models\Category::with('costComponents')->get();
-    }
-
-
-    protected static function costDetailSchema(): array
     {
         return [
-            Forms\Components\Hidden::make('cost_component_id'),
-
-            Forms\Components\Placeholder::make('component')
+            Forms\Components\Placeholder::make("component_name_{$component->id}")
                 ->label('Komponen Biaya')
-                ->content(
-                    fn(Forms\Get $get, $record) =>
-                    $record
-                    ? $record->costComponent?->name
-                    : \App\Models\CostComponent::find($get('cost_component_id'))?->name
-                ),
-
-            Forms\Components\Grid::make(2)
+                ->content($component->name),
+            
+            Forms\Components\Grid::make(3)
                 ->schema([
-                    Forms\Components\TextInput::make('unit')
+                    Forms\Components\TextInput::make("unit_{$component->id}")
+                        ->label('Unit')
                         ->numeric()
                         ->default(0)
                         ->live(),
 
-                    Forms\Components\TextInput::make('unit_cost')
+                    Forms\Components\TextInput::make("unit_cost_{$component->id}")
+                        ->label('Harga Satuan')
                         ->numeric()
                         ->prefix('Rp')
                         ->default(0)
                         ->live(),
-                ]),
 
-            Forms\Components\Placeholder::make('subtotal_preview')
-                ->label('Subtotal')
-                ->content(
-                    fn(Forms\Get $get) =>
-                    'Rp ' . number_format(
-                        ((int) $get('unit')) * ((int) $get('unit_cost')),
-                        0,
-                        ',',
-                        '.'
-                    )
-                )
-                ->live(),
+                    Forms\Components\Placeholder::make("subtotal_{$component->id}")
+                        ->label('Subtotal')
+                        ->content(
+                            fn(Forms\Get $get) =>
+                            'Rp ' . number_format(
+                                ((int) ($get("unit_{$component->id}") ?? 0)) * 
+                                ((int) ($get("unit_cost_{$component->id}") ?? 0)),
+                                0,
+                                ',',
+                                '.'
+                            )
+                        )
+                        ->live(),
+                ]),
+            
+            Forms\Components\Hidden::make("cost_component_id_{$component->id}")
+                ->default($component->id),
         ];
     }
 
+    // Mendapatkan categories dengan cost components yang sesuai scenario
+    public static function costCategoriesForScenario($scenarioId = null)
+    {
+        if (!$scenarioId) {
+            return collect([]);
+        }
 
+        // Ambil cost components yang terkait dengan scenario
+        $componentIds = CostComponent::query()
+            ->whereHas('scenarioRules', fn($q) => 
+                $q->where('scenario_id', $scenarioId)
+            )
+            ->pluck('id');
 
-
+        // Ambil categories yang memiliki components dari scenario ini
+        return \App\Models\Category::with(['costComponents' => function($query) use ($componentIds) {
+            $query->whereIn('id', $componentIds);
+        }])
+        ->whereHas('costComponents', fn($q) => 
+            $q->whereIn('id', $componentIds)
+        )
+        ->get();
+    }
 
     public static function form(Form $form): Form
     {
@@ -146,26 +97,20 @@ class TrainingClassResource extends Resource
                 Forms\Components\Section::make('Informasi Dasar')
                     ->schema([
                         Forms\Components\Select::make('scenario_id')
+                            ->label('Skenario Pelatihan')
                             ->relationship('scenario', 'name')
-                            ->reactive()
+                            ->required()
+                            ->live()
                             ->afterStateUpdated(function ($state, callable $set) {
-                                $components = CostComponent::query()
-                                    ->whereHas(
-                                        'scenarioRules',
-                                        fn($q) =>
-                                        $q->where('scenario_id', $state)
-                                            ->where('is_required', true)
-                                    )
-                                    ->get();
-
-                                $set('costDetails', $components->map(fn($c) => [
-                                    'cost_component_id' => $c->id,
-                                    'component_name' => $c->name,
-                                    'unit' => 0,
-                                    'unit_cost' => 0,
-                                ])->toArray());
-                            }),
-
+                                // Reset semua cost detail fields ketika scenario berubah
+                                $components = CostComponent::all();
+                                foreach ($components as $component) {
+                                    $set("unit_{$component->id}", 0);
+                                    $set("unit_cost_{$component->id}", 0);
+                                }
+                            })
+                            ->searchable()
+                            ->preload(),
 
                         Forms\Components\TextInput::make('sales_name')
                             ->label('Nama Sales')
@@ -238,36 +183,47 @@ class TrainingClassResource extends Resource
 
                 Forms\Components\Section::make('Detail Biaya')
                     ->schema([
+                        Forms\Components\Placeholder::make('scenario_warning')
+                            ->label('')
+                            ->content('Pilih Skenario Pelatihan terlebih dahulu untuk mengisi detail biaya')
+                            ->visible(fn(Get $get) => !$get('scenario_id')),
+
                         Tabs::make('Cost Categories')
-                            ->tabs(
-                                self::costCategories()->map(function ($category) {
-                                    $componentIds = $category->costComponents->pluck('id')->toArray();
+                            ->visible(fn(Get $get) => $get('scenario_id') !== null)
+                            ->tabs(function (Get $get) {
+                                $scenarioId = $get('scenario_id');
+                                
+                                if (!$scenarioId) {
+                                    return [];
+                                }
 
-                                    return Tabs\Tab::make($category->name)
-                                        ->badge(function (Get $get) use ($componentIds, $category) {
-                                            $total = 0;
-                                            foreach ($category->costComponents as $component) {
-                                                $unit = (int) ($get("unit_{$component->id}") ?? 0);
-                                                $unitCost = (int) ($get("unit_cost_{$component->id}") ?? 0);
-                                                $total += $unit * $unitCost;
-                                            }
+                                return self::costCategoriesForScenario($scenarioId)
+                                    ->map(function ($category) use ($get) {
+                                        return Tabs\Tab::make($category->name)
+                                            ->badge(function () use ($category, $get) {
+                                                $total = 0;
+                                                foreach ($category->costComponents as $component) {
+                                                    $unit = (int) ($get("unit_{$component->id}") ?? 0);
+                                                    $unitCost = (int) ($get("unit_cost_{$component->id}") ?? 0);
+                                                    $total += $unit * $unitCost;
+                                                }
 
-                                            return $total > 0
-                                                ? 'Rp ' . number_format($total, 0, ',', '.')
-                                                : null;
-                                        })
-                                        ->schema([
-                                            Forms\Components\Grid::make(1)
-                                                ->schema(
-                                                    collect($category->costComponents)->map(function ($component) {
-                                                        return Forms\Components\Group::make()
-                                                            ->schema(self::costDetailSchemaForComponent($component))
-                                                            ->columnSpanFull();
-                                                    })->toArray()
-                                                )
-                                        ]);
-                                })->toArray()
-                            ),
+                                                return $total > 0
+                                                    ? 'Rp ' . number_format($total, 0, ',', '.')
+                                                    : null;
+                                            })
+                                            ->schema([
+                                                Forms\Components\Grid::make(1)
+                                                    ->schema(
+                                                        collect($category->costComponents)->map(function ($component) {
+                                                            return Forms\Components\Group::make()
+                                                                ->schema(self::costDetailSchemaForComponent($component))
+                                                                ->columnSpanFull();
+                                                        })->toArray()
+                                                    )
+                                            ]);
+                                    })->toArray();
+                            }),
                     ]),
             ]);
     }
