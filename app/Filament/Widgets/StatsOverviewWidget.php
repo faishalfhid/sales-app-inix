@@ -13,6 +13,8 @@ class StatsOverviewWidget extends BaseWidget
     
     protected function getStats(): array
     {
+        $user = auth()->user();
+        
         // Get data
         $totalClasses = TrainingClass::count();
         $activeClasses = TrainingClass::whereIn('status', ['approved', 'running'])->count();
@@ -33,58 +35,101 @@ class StatsOverviewWidget extends BaseWidget
             ? (($currentMonthRevenue - $previousMonthRevenue) / $previousMonthRevenue) * 100 
             : 0;
 
-        return [
-            Stat::make('Total Kelas', $totalClasses)
-                ->description($classTrend >= 0 ? number_format($classTrend, 1) . '% increase' : number_format(abs($classTrend), 1) . '% decrease')
-                ->descriptionIcon($classTrend >= 0 ? 'heroicon-m-arrow-trending-up' : 'heroicon-m-arrow-trending-down')
-                ->chart($this->getClassTrendData())
-                ->color($classTrend >= 0 ? 'success' : 'danger'),
+        // Pending approval count
+        $pendingCount = TrainingClass::where('status', 'proposed')->count();
+
+        $stats = [];
+
+        // Stat 1: Total Kelas
+        $stats[] = Stat::make('Total Kelas', $totalClasses)
+            ->description($classTrend >= 0 ? number_format($classTrend, 1) . '% increase' : number_format(abs($classTrend), 1) . '% decrease')
+            ->descriptionIcon($classTrend >= 0 ? 'heroicon-m-arrow-trending-up' : 'heroicon-m-arrow-trending-down')
+            ->chart($this->getClassTrendData())
+            ->color($classTrend >= 0 ? 'success' : 'danger');
+
+        // Stat 2: Menunggu Konfirmasi (hanya untuk Direktur & GM)
+        if ($user && $user->canApprove()) {
+            $stats[] = Stat::make('Menunggu Konfirmasi', $pendingCount)
+                ->description('Kelas yang perlu disetujui')
+                ->descriptionIcon('heroicon-m-clock')
+                ->color($pendingCount > 0 ? 'warning' : 'success')
+                ->url(route('filament.admin.resources.training-classes.index', [
+                    'tableFilters' => ['status' => ['value' => 'proposed']]
+                ]))
+                ->extraAttributes([
+                    'class' => $pendingCount > 0 ? 'cursor-pointer hover:shadow-lg transition-shadow' : '',
+                ]);
+        }
                 
-            Stat::make('Kelas Aktif', $activeClasses)
-                ->description('Approved & Running')
-                ->descriptionIcon('heroicon-m-academic-cap')
-                ->color('info'),
+        // Stat 3: Kelas Aktif
+        $stats[] = Stat::make('Kelas Aktif', $activeClasses)
+            ->description('Approved & Running')
+            ->descriptionIcon('heroicon-m-academic-cap')
+            ->color('info');
                 
-            Stat::make('Total Revenue', 'Rp ' . Number::format($totalRevenue, locale: 'id'))
-                ->description($revenueTrend >= 0 ? number_format($revenueTrend, 1) . '% increase' : number_format(abs($revenueTrend), 1) . '% decrease')
-                ->descriptionIcon($revenueTrend >= 0 ? 'heroicon-m-arrow-trending-up' : 'heroicon-m-arrow-trending-down')
-                ->chart($this->getRevenueTrendData())
-                ->color($revenueTrend >= 0 ? 'success' : 'danger'),
+        // Stat 4: Total Revenue
+        $stats[] = Stat::make('Total Revenue', 'Rp ' . Number::format($totalRevenue, locale: 'id'))
+            ->description($revenueTrend >= 0 ? number_format($revenueTrend, 1) . '% increase' : number_format(abs($revenueTrend), 1) . '% decrease')
+            ->descriptionIcon($revenueTrend >= 0 ? 'heroicon-m-arrow-trending-up' : 'heroicon-m-arrow-trending-down')
+            ->chart($this->getRevenueTrendData())
+            ->color($revenueTrend >= 0 ? 'success' : 'danger');
                 
-            Stat::make('Total Net Profit', 'Rp ' . Number::format($totalProfit, locale: 'id'))
+        // Stat 5: Total Net Profit (hanya untuk user yang bisa approve atau admin)
+        if ($user && ($user->canApprove() || $user->isAdmin())) {
+            $stats[] = Stat::make('Total Net Profit', 'Rp ' . Number::format($totalProfit, locale: 'id'))
                 ->description('Dari semua kelas')
                 ->descriptionIcon('heroicon-m-currency-dollar')
-                ->color($totalProfit >= 0 ? 'success' : 'danger'),
+                ->color($totalProfit >= 0 ? 'success' : 'danger');
+        }
                 
-            Stat::make('Avg Profit Margin', number_format($avgProfitMargin ?? 0, 2) . '%')
+        // Stat 6: Avg Profit Margin (hanya untuk user yang bisa approve atau admin)
+        if ($user && ($user->canApprove() || $user->isAdmin())) {
+            $stats[] = Stat::make('Avg Profit Margin', number_format($avgProfitMargin ?? 0, 2) . '%')
                 ->description('Rata-rata margin keuntungan')
                 ->descriptionIcon('heroicon-m-chart-bar')
-                ->color('warning'),
+                ->color('warning');
+        }
                 
-            Stat::make('Total Peserta', TrainingClass::sum('participant_count'))
-                ->description('Dari semua kelas')
-                ->descriptionIcon('heroicon-m-user-group')
-                ->color('primary'),
-        ];
+        // Stat 7: Total Peserta
+        $stats[] = Stat::make('Total Peserta', Number::format(TrainingClass::sum('participant_count'), locale: 'id'))
+            ->description('Dari semua kelas')
+            ->descriptionIcon('heroicon-m-user-group')
+            ->color('primary');
+
+        return $stats;
     }
     
     private function getClassTrendData(): array
     {
-        return TrainingClass::selectRaw('DATE(created_at) as date, COUNT(*) as count')
+        $data = TrainingClass::selectRaw('DATE(created_at) as date, COUNT(*) as count')
             ->whereBetween('created_at', [now()->subDays(7), now()])
             ->groupBy('date')
             ->orderBy('date')
             ->pluck('count')
             ->toArray();
+        
+        // Pastikan ada 7 data points (fill dengan 0 jika tidak ada data)
+        while (count($data) < 7) {
+            $data[] = 0;
+        }
+        
+        return $data;
     }
     
     private function getRevenueTrendData(): array
     {
-        return TrainingClass::selectRaw('DATE(created_at) as date, SUM(total_revenue) as revenue')
+        $data = TrainingClass::selectRaw('DATE(created_at) as date, SUM(total_revenue) as revenue')
             ->whereBetween('created_at', [now()->subDays(7), now()])
             ->groupBy('date')
             ->orderBy('date')
             ->pluck('revenue')
             ->toArray();
+        
+        // Pastikan ada 7 data points (fill dengan 0 jika tidak ada data)
+        while (count($data) < 7) {
+            $data[] = 0;
+        }
+        
+        return $data;
     }
 }

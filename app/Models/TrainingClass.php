@@ -105,4 +105,15 @@ class TrainingClass extends Model
     {
         return $query->where('status', $status);
     }
+
+    /* ================= APPROVAL ================= */
+
+    public function canBeApprovedBy($user): bool
+{
+    if (!$user) {
+        return false;
+    }
+
+    return $user->canApprove();
+}
 }
