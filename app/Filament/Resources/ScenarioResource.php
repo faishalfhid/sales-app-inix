@@ -22,8 +22,14 @@ class ScenarioResource extends Resource
     protected static ?string $navigationLabel = 'Skenario';
 
     protected static ?string $pluralModelLabel = 'Skenario';
-    
+
     protected static ?string $modelLabel = 'Skenario';
+
+    public static function canViewAny(): bool
+    {
+        $user = auth()->user();
+        return $user && ($user->isAdmin() || $user->canApprove());
+    }
 
     public static function form(Form $form): Form
     {

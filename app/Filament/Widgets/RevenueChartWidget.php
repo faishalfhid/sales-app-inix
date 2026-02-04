@@ -9,7 +9,7 @@ use Flowframe\Trend\TrendValue;
 
 class RevenueChartWidget extends ChartWidget
 {
-    protected static ?string $heading = 'Revenue & Profit (30 Hari Terakhir)';
+    protected static ?string $heading = 'Revenue & Profit';
     
     protected static ?int $sort = 2;
     

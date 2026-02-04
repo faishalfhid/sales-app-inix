@@ -36,7 +36,9 @@ class TrainingClassResource extends Resource
         }
 
         $components = CostComponent::query()
-            ->whereHas('scenarioRules', fn($q) => 
+            ->whereHas(
+                'scenarioRules',
+                fn($q) =>
                 $q->where('scenario_id', $scenarioId)
             )
             ->get();
@@ -100,7 +102,7 @@ class TrainingClassResource extends Resource
                                     $profit = self::calculateNetProfit($get);
                                     $color = $profit >= 0 ? 'success' : 'danger';
                                     $symbol = $profit >= 0 ? '+' : '';
-                                    
+
                                     return new \Illuminate\Support\HtmlString(
                                         '<span class="text-' . $color . '-600 font-bold text-lg">' .
                                         $symbol . 'Rp ' . number_format($profit, 0, ',', '.') .
@@ -117,14 +119,14 @@ class TrainingClassResource extends Resource
                                 ->content(function (Get $get) {
                                     $revenue = self::calculateRevenue($get);
                                     $profit = self::calculateNetProfit($get);
-                                    
+
                                     if ($revenue == 0) {
                                         return '0%';
                                     }
-                                    
+
                                     $margin = ($profit / $revenue) * 100;
                                     $color = $margin >= 0 ? 'success' : 'danger';
-                                    
+
                                     return new \Illuminate\Support\HtmlString(
                                         '<span class="text-' . $color . '-600 font-semibold">' .
                                         number_format($margin, 2) . '%' .
@@ -146,11 +148,11 @@ class TrainingClassResource extends Resource
                                 ->content(function (Get $get) {
                                     $participantCount = (int) ($get('participant_count') ?? 0);
                                     $totalCost = self::calculateTotalCost($get);
-                                    
+
                                     if ($participantCount == 0) {
                                         return 'Rp 0';
                                     }
-                                    
+
                                     $costPerParticipant = $totalCost / $participantCount;
                                     return 'Rp ' . number_format($costPerParticipant, 0, ',', '.');
                                 })
@@ -168,7 +170,7 @@ class TrainingClassResource extends Resource
             Forms\Components\Placeholder::make("component_name_{$component->id}")
                 ->label('Komponen Biaya')
                 ->content($component->name),
-            
+
             Forms\Components\Grid::make(3)
                 ->schema([
                     Forms\Components\TextInput::make("unit_{$component->id}")
@@ -189,7 +191,7 @@ class TrainingClassResource extends Resource
                         ->content(
                             fn(Forms\Get $get) =>
                             'Rp ' . number_format(
-                                ((int) ($get("unit_{$component->id}") ?? 0)) * 
+                                ((int) ($get("unit_{$component->id}") ?? 0)) *
                                 ((int) ($get("unit_cost_{$component->id}") ?? 0)),
                                 0,
                                 ',',
@@ -198,7 +200,7 @@ class TrainingClassResource extends Resource
                         )
                         ->live(),
                 ]),
-            
+
             Forms\Components\Hidden::make("cost_component_id_{$component->id}")
                 ->default($component->id),
         ];
@@ -211,18 +213,24 @@ class TrainingClassResource extends Resource
         }
 
         $componentIds = CostComponent::query()
-            ->whereHas('scenarioRules', fn($q) => 
+            ->whereHas(
+                'scenarioRules',
+                fn($q) =>
                 $q->where('scenario_id', $scenarioId)
             )
             ->pluck('id');
 
-        return \App\Models\Category::with(['costComponents' => function($query) use ($componentIds) {
-            $query->whereIn('id', $componentIds);
-        }])
-        ->whereHas('costComponents', fn($q) => 
-            $q->whereIn('id', $componentIds)
-        )
-        ->get();
+        return \App\Models\Category::with([
+            'costComponents' => function ($query) use ($componentIds) {
+                $query->whereIn('id', $componentIds);
+            }
+        ])
+            ->whereHas(
+                'costComponents',
+                fn($q) =>
+                $q->whereIn('id', $componentIds)
+            )
+            ->get();
     }
 
     public static function form(Form $form): Form
@@ -305,7 +313,9 @@ class TrainingClassResource extends Resource
                             ->default(0)
                             ->live(onBlur: true),
 
+                        // Status untuk Direktur/GM/Admin (bisa edit)
                         Forms\Components\Select::make('status')
+                            ->label('Status')
                             ->options([
                                 'draft' => 'Draft',
                                 'proposed' => 'Proposed',
@@ -315,7 +325,33 @@ class TrainingClassResource extends Resource
                                 'cancelled' => 'Cancelled',
                             ])
                             ->default('draft')
-                            ->required(),
+                            ->required()
+                            ->visible(fn() => auth()->user()->canApprove() || auth()->user()->isAdmin()),
+
+                        // Status untuk Staff (hanya lihat, tidak bisa edit)
+                        Forms\Components\Select::make('status')
+                            ->label('Status')
+                            ->options([
+                                'draft' => 'Draft',
+                                'proposed' => 'Proposed (Kirim untuk Approval)',
+                            ])
+                            ->default('draft')
+                            ->required()
+                            ->disabled(fn($record) => $record && !in_array($record->status, ['draft', 'proposed']))
+                            ->dehydrated(true)
+                            ->helperText(function ($record) {
+                                if ($record && !in_array($record->status, ['draft', 'proposed'])) {
+                                    return 'Status tidak dapat diubah karena sudah ' . match ($record->status) {
+                                        'approved' => 'disetujui',
+                                        'running' => 'berjalan',
+                                        'completed' => 'selesai',
+                                        'cancelled' => 'dibatalkan',
+                                        default => 'diproses'
+                                    } . ' oleh manajemen.';
+                                }
+                                return 'Ubah ke "Proposed" untuk mengirim ke Direktur/GM untuk approval';
+                            })
+                            ->visible(fn() => !auth()->user()->canApprove() && !auth()->user()->isAdmin()),
                     ])
                     ->columns(3),
 
@@ -333,7 +369,7 @@ class TrainingClassResource extends Resource
                             ->visible(fn(Get $get) => $get('scenario_id') !== null)
                             ->tabs(function (Get $get) {
                                 $scenarioId = $get('scenario_id');
-                                
+
                                 if (!$scenarioId) {
                                     return [];
                                 }
