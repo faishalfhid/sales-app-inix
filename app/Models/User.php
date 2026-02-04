@@ -94,4 +94,6 @@ class User extends Authenticatable
             'staff' => 'Staff',
         ];
     }
+
+    
 }

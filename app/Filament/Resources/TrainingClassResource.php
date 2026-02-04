@@ -313,7 +313,7 @@ class TrainingClassResource extends Resource
                             ->default(0)
                             ->live(onBlur: true),
 
-                        // Status untuk Direktur/GM/Admin (bisa edit)
+                        // Status untuk Admin (semua status)
                         Forms\Components\Select::make('status')
                             ->label('Status')
                             ->options([
@@ -326,9 +326,60 @@ class TrainingClassResource extends Resource
                             ])
                             ->default('draft')
                             ->required()
-                            ->visible(fn() => auth()->user()->canApprove() || auth()->user()->isAdmin()),
+                            ->disabled(fn($record) => $record && $record->status === 'proposed')
+                            ->dehydrated(true)
+                            ->helperText(
+                                fn($record) =>
+                                $record && $record->status === 'proposed'
+                                ? 'Gunakan tombol Approve/Revise untuk mengubah status'
+                                : 'Kelola status kelas pelatihan'
+                            )
+                            ->visible(fn() => auth()->user()->isAdmin()),
 
-                        // Status untuk Staff (hanya lihat, tidak bisa edit)
+                        // Status untuk Direktur/GM (hanya display, tidak bisa edit langsung)
+                        Forms\Components\Placeholder::make('status_display_manager')
+                            ->label('Status')
+                            ->content(function ($record) {
+                                if (!$record) {
+                                    return '-';
+                                }
+
+                                $statusLabels = [
+                                    'draft' => 'Draft',
+                                    'proposed' => 'Menunggu Approval',
+                                    'approved' => 'Disetujui',
+                                    'running' => 'Berjalan',
+                                    'completed' => 'Selesai',
+                                    'cancelled' => 'Dibatalkan',
+                                ];
+
+                                $colors = [
+                                    'draft' => 'gray',
+                                    'proposed' => 'warning',
+                                    'approved' => 'success',
+                                    'running' => 'primary',
+                                    'completed' => 'info',
+                                    'cancelled' => 'danger',
+                                ];
+
+                                $status = $record->status;
+                                $color = $colors[$status] ?? 'gray';
+                                $label = $statusLabels[$status] ?? $status;
+
+                                return new \Illuminate\Support\HtmlString(
+                                    '<span class="inline-flex items-center gap-x-1.5 rounded-md px-3 py-1.5 text-sm font-semibold ring-1 ring-inset bg-' . $color . '-50 text-' . $color . '-700 ring-' . $color . '-600/20">' .
+                                    $label .
+                                    '</span>'
+                                );
+                            })
+                            ->visible(fn() => auth()->user()->canApprove() && !auth()->user()->isAdmin()),
+
+                        // Hidden field untuk Direktur/GM
+                        Forms\Components\Hidden::make('status')
+                            ->default(fn($record) => $record?->status ?? 'draft')
+                            ->visible(fn() => auth()->user()->canApprove() && !auth()->user()->isAdmin()),
+
+                        // Status untuk Staff (hanya draft & proposed)
                         Forms\Components\Select::make('status')
                             ->label('Status')
                             ->options([
@@ -351,12 +402,43 @@ class TrainingClassResource extends Resource
                                 }
                                 return 'Ubah ke "Proposed" untuk mengirim ke Direktur/GM untuk approval';
                             })
-                            ->visible(fn() => !auth()->user()->canApprove() && !auth()->user()->isAdmin()),
+                            ->visible(fn() => auth()->user()->isStaff()),
                     ])
                     ->columns(3),
 
                 // Summary Section
                 ...self::getSummarySchema(),
+
+                // Info approval/revision notes
+                        Forms\Components\Section::make('Catatan Manajemen')
+                            ->schema([
+                                Forms\Components\Placeholder::make('approval_info')
+                                    ->label('')
+                                    ->content(function ($record) {
+                                        if (!$record || !$record->approval_notes) {
+                                            return null;
+                                        }
+
+                                        $icon = $record->status === 'approved' ? '✓' : '⟲';
+                                        $color = $record->status === 'approved' ? 'success' : 'warning';
+                                        $title = $record->status === 'approved' ? 'Disetujui' : 'Perlu Revisi';
+
+                                        return new \Illuminate\Support\HtmlString(
+                                            '<div class="rounded-lg border border-' . $color . '-200 bg-' . $color . '-50 p-4">' .
+                                            '<div class="flex items-start">' .
+                                            '<span class="text-' . $color . '-600 text-2xl mr-3">' . $icon . '</span>' .
+                                            '<div>' .
+                                            '<h4 class="font-semibold text-' . $color . '-900">' . $title . ' oleh ' . ($record->approver?->name ?? 'Manajemen') . '</h4>' .
+                                            '<p class="text-sm text-' . $color . '-700 mt-1">' . $record->approval_notes . '</p>' .
+                                            '<p class="text-xs text-' . $color . '-600 mt-2">Pada: ' . $record->approved_at?->format('d M Y H:i') . '</p>' .
+                                            '</div>' .
+                                            '</div>' .
+                                            '</div>'
+                                        );
+                                    }),
+                            ])
+                            ->visible(fn($record) => $record && $record->approval_notes)
+                            ->columnSpanFull(),
 
                 Forms\Components\Section::make('Detail Biaya')
                     ->schema([
@@ -445,6 +527,11 @@ class TrainingClassResource extends Resource
                         'info' => 'completed',
                         'danger' => 'cancelled',
                     ]),
+
+                Tables\Columns\TextColumn::make('approver.name')
+                    ->label('Approved By')
+                    ->default('-')
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('scenario')
@@ -461,12 +548,87 @@ class TrainingClassResource extends Resource
                     ]),
             ])
             ->actions([
+                // Approve Action - Hanya untuk Direktur/GM pada status proposed
+                Tables\Actions\Action::make('approve')
+                    ->label('Approve')
+                    ->icon('heroicon-o-check-circle')
+                    ->color('success')
+                    ->visible(function ($record) {
+                        $user = auth()->user();
+                        return $record->status === 'proposed'
+                            && $user->canApprove()
+                            && !$user->isAdmin();
+                    })
+                    ->form([
+                        Forms\Components\Textarea::make('approval_notes')
+                            ->label('Catatan Approval (Opsional)')
+                            ->rows(3),
+                    ])
+                    ->action(function ($record, array $data) {
+                        $record->update([
+                            'status' => 'approved',
+                            'approved_by' => auth()->id(),
+                            'approved_at' => now(),
+                            'approval_notes' => $data['approval_notes'] ?? null,
+                        ]);
+
+                        \Filament\Notifications\Notification::make()
+                            ->title('Training Class Approved')
+                            ->success()
+                            ->body('Training class untuk ' . $record->customer . ' telah disetujui.')
+                            ->send();
+                    })
+                    ->requiresConfirmation()
+                    ->modalHeading('Approve Training Class')
+                    ->modalDescription('Training class akan disetujui dan menunggu admin untuk mengatur jadwal.')
+                    ->modalSubmitActionLabel('Ya, Approve'),
+
+                // Revise Action - Hanya untuk Direktur/GM pada status proposed
+                Tables\Actions\Action::make('revise')
+                    ->label('Revise')
+                    ->icon('heroicon-o-arrow-uturn-left')
+                    ->color('warning')
+                    ->visible(function ($record) {
+                        $user = auth()->user();
+                        return $record->status === 'proposed'
+                            && $user->canApprove()
+                            && !$user->isAdmin();
+                    })
+                    ->form([
+                        Forms\Components\Textarea::make('approval_notes')
+                            ->label('Catatan Revisi')
+                            ->required()
+                            ->rows(3)
+                            ->helperText('Jelaskan apa yang perlu diperbaiki'),
+                    ])
+                    ->action(function ($record, array $data) {
+                        $record->update([
+                            'status' => 'draft',
+                            'approved_by' => auth()->id(),
+                            'approved_at' => now(),
+                            'approval_notes' => $data['approval_notes'],
+                        ]);
+
+                        \Filament\Notifications\Notification::make()
+                            ->title('Training Class Needs Revision')
+                            ->warning()
+                            ->body('Training class dikembalikan ke staff untuk revisi.')
+                            ->send();
+                    })
+                    ->requiresConfirmation()
+                    ->modalHeading('Revise Training Class')
+                    ->modalDescription('Training class akan dikembalikan ke staff untuk diperbaiki.')
+                    ->modalSubmitActionLabel('Ya, Minta Revisi'),
+
                 Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+
+                Tables\Actions\DeleteAction::make()
+                    ->visible(fn($record) => auth()->user()->isAdmin() || $record->status === 'draft'),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                    Tables\Actions\DeleteBulkAction::make()
+                        ->visible(fn() => auth()->user()->isAdmin()),
                 ]),
             ]);
     }
