@@ -428,7 +428,7 @@ class TrainingClassResource extends Resource
                                             '<div>' .
                                             '<h4 class="font-semibold text-' . $color . '-900">' . $title . ' oleh ' . ($record->approver?->name ?? 'Manajemen') . '</h4>' .
                                             '<p class="text-sm text-' . $color . '-700 mt-1">' . $record->approval_notes . '</p>' .
-                                            '<p class="text-xs text-' . $color . '-600 mt-2">Pada: ' . $record->approved_at?->format('d M Y H:i') . '</p>' .
+                                            '<p class="text-xs text-' . $color . '-600 mt-2">Pada: ' . $record->approved_at?->format('d M Y') . '</p>' .
                                             '</div>' .
                                             '</div>' .
                                             '</div>'
