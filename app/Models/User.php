@@ -21,6 +21,7 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'role',
     ];
 
     /**
@@ -43,6 +44,54 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+        ];
+    }
+    // Helper methods untuk role
+    public function isAdmin(): bool
+    {
+        return $this->role === 'admin';
+    }
+
+    public function isDirektur(): bool
+    {
+        return $this->role === 'direktur';
+    }
+
+    public function isGeneralManager(): bool
+    {
+        return $this->role === 'general_manager';
+    }
+
+    public function isStaff(): bool
+    {
+        return $this->role === 'staff';
+    }
+
+    public function canApprove(): bool
+    {
+        return in_array($this->role, ['direktur', 'general_manager']);
+    }
+
+    // Mendapatkan label role
+    public function getRoleLabel(): string
+    {
+        return match ($this->role) {
+            'admin' => 'Administrator',
+            'direktur' => 'Direktur',
+            'general_manager' => 'General Manager',
+            'staff' => 'Staff',
+            default => 'Unknown',
+        };
+    }
+
+    // Available roles
+    public static function getRoles(): array
+    {
+        return [
+            'admin' => 'Administrator',
+            'direktur' => 'Direktur',
+            'general_manager' => 'General Manager',
+            'staff' => 'Staff',
         ];
     }
 }
