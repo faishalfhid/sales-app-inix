@@ -419,14 +419,12 @@ class TrainingClassResource extends Resource
                                             return null;
                                         }
 
-                                        $icon = $record->status === 'approved' ? '✓' : '⟲';
                                         $color = $record->status === 'approved' ? 'success' : 'warning';
                                         $title = $record->status === 'approved' ? 'Disetujui' : 'Perlu Revisi';
 
                                         return new \Illuminate\Support\HtmlString(
                                             '<div class="rounded-lg border border-' . $color . '-200 bg-' . $color . '-50 p-4">' .
                                             '<div class="flex items-start">' .
-                                            '<span class="text-' . $color . '-600 text-2xl mr-3">' . $icon . '</span>' .
                                             '<div>' .
                                             '<h4 class="font-semibold text-' . $color . '-900">' . $title . ' oleh ' . ($record->approver?->name ?? 'Manajemen') . '</h4>' .
                                             '<p class="text-sm text-' . $color . '-700 mt-1">' . $record->approval_notes . '</p>' .

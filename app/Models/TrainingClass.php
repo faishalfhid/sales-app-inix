@@ -31,6 +31,9 @@ class TrainingClass extends Model
         'status',
         'start_date',
         'end_date',
+        'approval_notes',
+        'approved_by',
+        'approved_at',
     ];
 
     protected $casts = [
@@ -47,7 +50,15 @@ class TrainingClass extends Model
         'net_profit_margin' => 'decimal:2',
         'start_date' => 'date',
         'end_date' => 'date',
+        'approved_at' => 'datetime',
     ];
+    
+    /* ================= GET APPROVER ================= */
+
+    public function approver()
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
 
     /* ================= RELATIONS ================= */
 
@@ -66,15 +77,15 @@ class TrainingClass extends Model
     public function calculateRealCost(): float
     {
         return $this->costDetails
-            ->filter(fn ($d) => $d->costComponent?->nature === 'R')
-            ->sum(fn ($d) => ($d->unit ?? 0) * ($d->unit_cost ?? 0));
+            ->filter(fn($d) => $d->costComponent?->nature === 'R')
+            ->sum(fn($d) => ($d->unit ?? 0) * ($d->unit_cost ?? 0));
     }
 
     public function calculatePassCost(): float
     {
         return $this->costDetails
-            ->filter(fn ($d) => $d->costComponent?->nature === 'L')
-            ->sum(fn ($d) => ($d->unit ?? 0) * ($d->unit_cost ?? 0));
+            ->filter(fn($d) => $d->costComponent?->nature === 'L')
+            ->sum(fn($d) => ($d->unit ?? 0) * ($d->unit_cost ?? 0));
     }
 
     /* ================= MAIN RECALCULATE ================= */
@@ -109,11 +120,11 @@ class TrainingClass extends Model
     /* ================= APPROVAL ================= */
 
     public function canBeApprovedBy($user): bool
-{
-    if (!$user) {
-        return false;
-    }
+    {
+        if (!$user) {
+            return false;
+        }
 
-    return $user->canApprove();
-}
+        return $user->canApprove();
+    }
 }
