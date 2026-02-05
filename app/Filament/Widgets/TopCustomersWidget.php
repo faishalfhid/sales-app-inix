@@ -11,17 +11,28 @@ use Illuminate\Database\Eloquent\Builder;
 class TopCustomersWidget extends BaseWidget
 {
     protected static ?int $sort = 6;
-    
-    protected int | string | array $columnSpan = 'full';
+
+    protected int|string|array $columnSpan = 'full';
 
     public function table(Table $table): Table
     {
         return $table
             ->heading('Top 10 Customers')
             ->query(
+                fn() =>
                 TrainingClass::query()
-                    ->selectRaw('customer, COUNT(*) as total_classes, SUM(total_revenue) as total_revenue, SUM(net_profit) as total_profit, SUM(participant_count) as total_participants')
+                    ->selectRaw('
+            customer,
+            COUNT(*) as total_classes,
+            SUM(total_revenue) as total_revenue,
+            SUM(net_profit) as total_profit,
+            SUM(participant_count) as total_participants
+        ')
                     ->whereNotNull('customer')
+                    ->when(
+                        auth()->user()?->isSales(),
+                        fn($query) => $query->where('sales_id', auth()->id())
+                    )
                     ->groupBy('customer')
                     ->orderByDesc('total_revenue')
                     ->limit(10)
@@ -31,26 +42,26 @@ class TopCustomersWidget extends BaseWidget
                     ->label('Customer')
                     ->searchable()
                     ->weight('bold'),
-                    
+
                 Tables\Columns\TextColumn::make('total_classes')
                     ->label('Total Kelas')
                     ->alignCenter()
                     ->badge()
                     ->color('primary'),
-                    
+
                 Tables\Columns\TextColumn::make('total_participants')
                     ->label('Total Peserta')
                     ->alignCenter(),
-                    
+
                 Tables\Columns\TextColumn::make('total_revenue')
                     ->label('Total Revenue')
                     ->money('IDR')
                     ->sortable(),
-                    
+
                 Tables\Columns\TextColumn::make('total_profit')
                     ->label('Total Profit')
                     ->money('IDR')
-                    ->color(fn ($state) => $state >= 0 ? 'success' : 'danger')
+                    ->color(fn($state) => $state >= 0 ? 'success' : 'danger')
                     ->sortable(),
             ]);
     }

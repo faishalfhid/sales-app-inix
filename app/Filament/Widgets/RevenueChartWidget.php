@@ -6,30 +6,36 @@ use App\Models\TrainingClass;
 use Filament\Widgets\ChartWidget;
 use Flowframe\Trend\Trend;
 use Flowframe\Trend\TrendValue;
+use Illuminate\Support\Facades\Auth;
+
 
 class RevenueChartWidget extends ChartWidget
 {
     protected static ?string $heading = 'Revenue & Profit';
-    
+
     protected static ?int $sort = 2;
-    
+
     protected static ?string $maxHeight = '300px';
-    
+
     public ?string $filter = '30';
 
     protected function getData(): array
     {
-        $activeFilter = $this->filter;
-        
-        $revenueData = Trend::model(TrainingClass::class)
+        $activeFilter = (int) $this->filter;
+        $userId = Auth::id();
+
+        $baseQuery = TrainingClass::query()
+            ->where('sales_id', $userId); // 🔥 KUNCI PER SALES
+
+        $revenueData = Trend::query($baseQuery)
             ->between(
                 start: now()->subDays($activeFilter),
                 end: now(),
             )
             ->perDay()
             ->sum('total_revenue');
-            
-        $profitData = Trend::model(TrainingClass::class)
+
+        $profitData = Trend::query($baseQuery)
             ->between(
                 start: now()->subDays($activeFilter),
                 end: now(),
@@ -41,26 +47,27 @@ class RevenueChartWidget extends ChartWidget
             'datasets' => [
                 [
                     'label' => 'Revenue',
-                    'data' => $revenueData->map(fn (TrendValue $value) => $value->aggregate),
+                    'data' => $revenueData->map(fn(TrendValue $value) => $value->aggregate),
                     'backgroundColor' => 'rgba(59, 130, 246, 0.1)',
                     'borderColor' => 'rgb(59, 130, 246)',
                 ],
                 [
                     'label' => 'Net Profit',
-                    'data' => $profitData->map(fn (TrendValue $value) => $value->aggregate),
+                    'data' => $profitData->map(fn(TrendValue $value) => $value->aggregate),
                     'backgroundColor' => 'rgba(16, 185, 129, 0.1)',
                     'borderColor' => 'rgb(16, 185, 129)',
                 ],
             ],
-            'labels' => $revenueData->map(fn (TrendValue $value) => $value->date),
+            'labels' => $revenueData->map(fn(TrendValue $value) => $value->date),
         ];
     }
+
 
     protected function getType(): string
     {
         return 'line';
     }
-    
+
     protected function getFilters(): ?array
     {
         return [

@@ -4,17 +4,21 @@ namespace App\Filament\Widgets;
 
 use App\Models\TrainingClass;
 use Filament\Widgets\ChartWidget;
+use Illuminate\Support\Facades\Auth;
+
 
 class ClassStatusChartWidget extends ChartWidget
 {
     protected static ?string $heading = 'Status Kelas';
-    
+
     protected static ?int $sort = 4;
-    
+
     protected static ?string $maxHeight = '300px';
 
     protected function getData(): array
     {
+        $userId = Auth::id();
+
         $statuses = [
             'draft' => 'Draft',
             'proposed' => 'Proposed',
@@ -23,12 +27,15 @@ class ClassStatusChartWidget extends ChartWidget
             'completed' => 'Completed',
             'cancelled' => 'Cancelled',
         ];
-        
+
         $data = [];
         $labels = [];
-        
+
         foreach ($statuses as $key => $label) {
-            $count = TrainingClass::where('status', $key)->count();
+            $count = TrainingClass::query()
+                ->where('sales_id', $userId)
+                ->where('status', $key)
+                ->count();
             if ($count > 0) {
                 $data[] = $count;
                 $labels[] = $label;

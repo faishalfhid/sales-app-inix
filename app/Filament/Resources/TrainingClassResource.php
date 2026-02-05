@@ -14,6 +14,8 @@ use Filament\Tables\Table;
 use Filament\Forms\Get;
 use Filament\Forms\Components\Tabs;
 use Filament\Forms\Components\Repeater;
+use Illuminate\Database\Eloquent\Builder;
+
 
 class TrainingClassResource extends Resource
 {
@@ -23,6 +25,19 @@ class TrainingClassResource extends Resource
     protected static ?int $navigationSort = 1;
     protected static ?string $label = 'Kelas Pelatihan';
     protected static ?string $navigationLabel = 'Kelas Pelatihan';
+
+
+    public static function getEloquentQuery(): Builder
+    {
+        $query = parent::getEloquentQuery();
+
+        if (auth()->user()->role === 'staff') {
+            $query->where('sales_id', auth()->id());
+        }
+
+        return $query;
+    }
+
 
     // Method untuk kalkulasi total cost
     public static function calculateTotalCost(Get $get, $scenarioId = null): int
@@ -257,7 +272,9 @@ class TrainingClassResource extends Resource
 
                         Forms\Components\TextInput::make('sales_name')
                             ->label('Nama Sales')
-                            ->maxLength(100),
+                            ->default(fn() => auth()->user()->name)
+                            ->disabled()
+                            ->dehydrated(false),
 
                         Forms\Components\TextInput::make('material')
                             ->label('Materi')
@@ -410,33 +427,33 @@ class TrainingClassResource extends Resource
                 ...self::getSummarySchema(),
 
                 // Info approval/revision notes
-                        Forms\Components\Section::make('Catatan Manajemen')
-                            ->schema([
-                                Forms\Components\Placeholder::make('approval_info')
-                                    ->label('')
-                                    ->content(function ($record) {
-                                        if (!$record || !$record->approval_notes) {
-                                            return null;
-                                        }
+                Forms\Components\Section::make('Catatan Manajemen')
+                    ->schema([
+                        Forms\Components\Placeholder::make('approval_info')
+                            ->label('')
+                            ->content(function ($record) {
+                                if (!$record || !$record->approval_notes) {
+                                    return null;
+                                }
 
-                                        $color = $record->status === 'approved' ? 'success' : 'warning';
-                                        $title = $record->status === 'approved' ? 'Disetujui' : 'Perlu Revisi';
+                                $color = $record->status === 'approved' ? 'success' : 'warning';
+                                $title = $record->status === 'approved' ? 'Disetujui' : 'Perlu Revisi';
 
-                                        return new \Illuminate\Support\HtmlString(
-                                            '<div class="rounded-lg border border-' . $color . '-200 bg-' . $color . '-50 p-4">' .
-                                            '<div class="flex items-start">' .
-                                            '<div>' .
-                                            '<h4 class="font-semibold text-' . $color . '-900">' . $title . ' oleh ' . ($record->approver?->name ?? 'Manajemen') . '</h4>' .
-                                            '<p class="text-sm text-' . $color . '-700 mt-1">' . $record->approval_notes . '</p>' .
-                                            '<p class="text-xs text-' . $color . '-600 mt-2">Pada: ' . $record->approved_at?->format('d M Y') . '</p>' .
-                                            '</div>' .
-                                            '</div>' .
-                                            '</div>'
-                                        );
-                                    }),
-                            ])
-                            ->visible(fn($record) => $record && $record->approval_notes)
-                            ->columnSpanFull(),
+                                return new \Illuminate\Support\HtmlString(
+                                    '<div class="rounded-lg border border-' . $color . '-200 bg-' . $color . '-50 p-4">' .
+                                    '<div class="flex items-start">' .
+                                    '<div>' .
+                                    '<h4 class="font-semibold text-' . $color . '-900">' . $title . ' oleh ' . ($record->approver?->name ?? 'Manajemen') . '</h4>' .
+                                    '<p class="text-sm text-' . $color . '-700 mt-1">' . $record->approval_notes . '</p>' .
+                                    '<p class="text-xs text-' . $color . '-600 mt-2">Pada: ' . $record->approved_at?->format('d M Y') . '</p>' .
+                                    '</div>' .
+                                    '</div>' .
+                                    '</div>'
+                                );
+                            }),
+                    ])
+                    ->visible(fn($record) => $record && $record->approval_notes)
+                    ->columnSpanFull(),
 
                 Forms\Components\Section::make('Detail Biaya')
                     ->schema([

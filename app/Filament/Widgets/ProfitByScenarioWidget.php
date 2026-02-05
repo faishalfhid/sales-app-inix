@@ -4,6 +4,7 @@ namespace App\Filament\Widgets;
 
 use App\Models\TrainingClass;
 use Filament\Widgets\ChartWidget;
+use Illuminate\Support\Facades\Auth;
 
 class ProfitByScenarioWidget extends ChartWidget
 {
@@ -16,6 +17,7 @@ class ProfitByScenarioWidget extends ChartWidget
     protected function getData(): array
     {
         $data = TrainingClass::with('scenario')
+        ->where('sales_id', Auth::id())
             ->selectRaw('scenario_id, SUM(net_profit) as total_profit')
             ->groupBy('scenario_id')
             ->get();

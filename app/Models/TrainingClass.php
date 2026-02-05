@@ -15,6 +15,7 @@ class TrainingClass extends Model
     protected $fillable = [
         'scenario_id',
         'sales_name',
+        'sales_id',
         'material',
         'customer',
         'training_days',
@@ -51,8 +52,15 @@ class TrainingClass extends Model
         'start_date' => 'date',
         'end_date' => 'date',
         'approved_at' => 'datetime',
+        
     ];
-    
+    /* ================= GET SALES ID BY USER ID ================= */
+    public function sales()
+    {
+        return $this->belongsTo(User::class, 'sales_id');
+    }
+
+
     /* ================= GET APPROVER ================= */
 
     public function approver()

@@ -18,6 +18,15 @@ class CreateTrainingClass extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
+        // 1️⃣ Set sales_id & sales_name dari user login
+        $user = auth()->user();
+
+        $data['sales_id'] = $user->id;
+        $data['sales_name'] = $user->name;
+
+        // ===============================
+        // LOGIC LAMA KAMU (TETAP)
+        // ===============================
         $scenarioId = $data['scenario_id'] ?? null;
 
         if (!$scenarioId) {
@@ -27,8 +36,7 @@ class CreateTrainingClass extends CreateRecord
         $components = CostComponent::query()
             ->whereHas(
                 'scenarioRules',
-                fn($q) =>
-                $q->where('scenario_id', $scenarioId)
+                fn($q) => $q->where('scenario_id', $scenarioId)
             )
             ->get();
 
@@ -51,6 +59,7 @@ class CreateTrainingClass extends CreateRecord
 
         return $data;
     }
+
 
     protected function afterCreate(): void
     {
@@ -80,7 +89,13 @@ class CreateTrainingClass extends CreateRecord
 
                     Forms\Components\TextInput::make('sales_name')
                         ->label('Nama Sales')
-                        ->maxLength(100),
+                        ->default(fn() => auth()->user()->name)
+                        ->disabled()
+                        ->dehydrated(false),
+
+                    Forms\Components\Hidden::make('sales_id')
+                        ->default(fn() => auth()->id())
+                        ->dehydrated(true),
 
                     Forms\Components\TextInput::make('material')
                         ->label('Materi')

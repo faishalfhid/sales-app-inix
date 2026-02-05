@@ -6,19 +6,22 @@ use App\Models\TrainingClass;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
+use Illuminate\Support\Facades\Auth;
+
 
 class LatestTrainingClassesWidget extends BaseWidget
 {
     protected static ?int $sort = 5;
-    
-    protected int | string | array $columnSpan = 'full';
-    
+
+    protected int|string|array $columnSpan = 'full';
+
     public function table(Table $table): Table
     {
         return $table
             ->heading('Kelas Terbaru')
             ->query(
                 TrainingClass::query()
+                    ->where('sales_id', Auth::id())
                     ->latest()
                     ->limit(5)
             )
@@ -26,29 +29,29 @@ class LatestTrainingClassesWidget extends BaseWidget
                 Tables\Columns\TextColumn::make('customer')
                     ->searchable()
                     ->limit(30),
-                    
+
                 Tables\Columns\TextColumn::make('material')
                     ->searchable()
                     ->limit(30),
-                    
+
                 Tables\Columns\TextColumn::make('scenario.name')
                     ->badge()
                     ->label('Skenario'),
-                    
+
                 Tables\Columns\TextColumn::make('participant_count')
                     ->label('Peserta')
                     ->alignCenter(),
-                    
+
                 Tables\Columns\TextColumn::make('total_revenue')
                     ->label('Revenue')
                     ->money('IDR')
                     ->sortable(),
-                    
+
                 Tables\Columns\TextColumn::make('net_profit')
                     ->label('Net Profit')
                     ->money('IDR')
-                    ->color(fn ($state) => $state >= 0 ? 'success' : 'danger'),
-                    
+                    ->color(fn($state) => $state >= 0 ? 'success' : 'danger'),
+
                 Tables\Columns\BadgeColumn::make('status')
                     ->colors([
                         'secondary' => 'draft',
@@ -58,7 +61,7 @@ class LatestTrainingClassesWidget extends BaseWidget
                         'info' => 'completed',
                         'danger' => 'cancelled',
                     ]),
-                    
+
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Dibuat')
                     ->dateTime('d M Y')
@@ -68,7 +71,7 @@ class LatestTrainingClassesWidget extends BaseWidget
                 Tables\Actions\Action::make('view')
                     ->label('Lihat')
                     ->icon('heroicon-o-eye')
-                    ->url(fn (TrainingClass $record): string => route('filament.admin.resources.training-classes.edit', $record)),
+                    ->url(fn(TrainingClass $record): string => route('filament.admin.resources.training-classes.edit', $record)),
             ]);
     }
 }

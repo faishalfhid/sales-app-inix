@@ -95,5 +95,11 @@ class User extends Authenticatable
         ];
     }
 
-    
+    public function trainingClasses()
+    {
+        return $this->hasMany(TrainingClass::class, 'sales_id');
+    }
+
+
+
 }
