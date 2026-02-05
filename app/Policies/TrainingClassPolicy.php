@@ -23,7 +23,9 @@ class TrainingClassPolicy
 
     public function create(User $user): bool
     {
-        return true;
+            return $user->role === 'staff';
+
+        // return true;
     }
 
     public function update(User $user, TrainingClass $trainingClass): bool
