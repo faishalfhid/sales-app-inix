@@ -57,7 +57,7 @@ class LatestTrainingClassesWidget extends BaseWidget
                         'secondary' => 'draft',
                         'warning' => 'proposed',
                         'success' => 'approved',
-                        'primary' => 'running',
+                        'darkGreen' => 'running',
                         'info' => 'completed',
                         'danger' => 'cancelled',
                     ]),
