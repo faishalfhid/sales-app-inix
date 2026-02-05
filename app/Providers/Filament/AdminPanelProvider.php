@@ -25,9 +25,10 @@ class AdminPanelProvider extends PanelProvider
         return $panel
             ->default()
             ->id('admin')
-            ->path('admin')
+            ->path('')
             ->login()
             ->brandLogo(asset('images/logo-inix.png'))
+            ->favicon(asset('images/logo-inix.png'))
             ->brandLogoHeight('3rem')
             ->brandName('Inix Sales App')
             ->brandLogo(fn () => view('filament.admin.brand'))
