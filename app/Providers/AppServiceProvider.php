@@ -7,6 +7,8 @@ use App\Models\TrainingClass;
 use App\Policies\TrainingClassPolicy;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\Gate;
+use Filament\Support\Colors\Color;
+use Filament\Support\Facades\FilamentColor;
 
 
 class AppServiceProvider extends ServiceProvider
@@ -28,9 +30,15 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Bootstrap any application services.
      */
-        public function boot(): void
+    public function boot(): void
     {
-        
+
+        FilamentColor::register([
+            // 'info' => Color::Green[900],
+            'darkGreen' => Color::Cyan,
+            'cancel' => Color::Red,
+        ]);
+
         if (request()->getHost() && str_contains(request()->getHost(), 'ngrok')) {
             URL::forceScheme('https');
         }
