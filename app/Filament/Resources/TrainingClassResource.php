@@ -24,6 +24,8 @@ class TrainingClassResource extends Resource
     protected static ?string $navigationGroup = 'Training Management';
     protected static ?int $navigationSort = 1;
     protected static ?string $label = 'Kelas Pelatihan';
+
+    protected static ?string $pluralLabel = 'Kelas Pelatihan';
     protected static ?string $navigationLabel = 'Kelas Pelatihan';
 
 
@@ -38,6 +40,54 @@ class TrainingClassResource extends Resource
         return $query;
     }
 
+    // Method untuk kalkulasi real cost dan pass cost
+    protected static function calculateRealCost(Get $get): float
+    {
+        $scenarioId = $get('scenario_id');
+
+        if (!$scenarioId) {
+            return 0;
+        }
+
+        // Ambil semua cost components yang memiliki nature 'R' (Real)
+        $components = CostComponent::query()
+            ->whereHas('scenarioRules', fn($q) => $q->where('scenario_id', $scenarioId))
+            ->where('nature', 'R') // ← Filter berdasarkan nature
+            ->get();
+
+        $total = 0;
+        foreach ($components as $component) {
+            $unit = (int) ($get("unit_{$component->id}") ?? 0);
+            $unitCost = (int) ($get("unit_cost_{$component->id}") ?? 0);
+            $total += $unit * $unitCost;
+        }
+
+        return $total;
+    }
+
+    protected static function calculatePassCost(Get $get): float
+    {
+        $scenarioId = $get('scenario_id');
+
+        if (!$scenarioId) {
+            return 0;
+        }
+
+        // Ambil semua cost components yang memiliki nature 'L' (Pass/Lainnya)
+        $components = CostComponent::query()
+            ->whereHas('scenarioRules', fn($q) => $q->where('scenario_id', $scenarioId))
+            ->where('nature', 'L') // ← Filter berdasarkan nature
+            ->get();
+
+        $total = 0;
+        foreach ($components as $component) {
+            $unit = (int) ($get("unit_{$component->id}") ?? 0);
+            $unitCost = (int) ($get("unit_cost_{$component->id}") ?? 0);
+            $total += $unit * $unitCost;
+        }
+
+        return $total;
+    }
 
     // Method untuk kalkulasi total cost
     public static function calculateTotalCost(Get $get, $scenarioId = null): int
@@ -173,6 +223,26 @@ class TrainingClassResource extends Resource
                                 })
                                 ->live(),
                         ]),
+
+                    Forms\Components\Grid::make(3)
+                        ->schema([
+                            Forms\Components\Placeholder::make('real_cost_display')
+                                ->label('Total Real Cost (R)')
+                                ->content(function (Get $get) {
+                                    $total = self::calculateRealCost($get);
+                                    return 'Rp ' . number_format($total, 0, ',', '.');
+                                })
+                                ->live(),
+
+                            Forms\Components\Placeholder::make('pass_cost_display')
+                                ->label('Total Pass Cost (L)')
+                                ->content(function (Get $get) {
+                                    $total = self::calculatePassCost($get);
+                                    return 'Rp ' . number_format($total, 0, ',', '.');
+                                })
+                                ->live(),
+                        ]),
+
                 ])
                 ->collapsible()
                 ->collapsed(false),
@@ -335,6 +405,7 @@ class TrainingClassResource extends Resource
                             ->label('Status')
                             ->options([
                                 'draft' => 'Draft',
+                                'revision' => 'Revision', // ← TAMBAHKAN
                                 'proposed' => 'Proposed',
                                 'approved' => 'Approved',
                                 'running' => 'Running',
@@ -363,6 +434,7 @@ class TrainingClassResource extends Resource
 
                                 $statusLabels = [
                                     'draft' => 'Draft',
+                                    'revision' => 'Perlu Revisi', // ← TAMBAHKAN
                                     'proposed' => 'Menunggu Approval',
                                     'approved' => 'Disetujui',
                                     'running' => 'Berjalan',
@@ -372,9 +444,10 @@ class TrainingClassResource extends Resource
 
                                 $colors = [
                                     'draft' => 'gray',
+                                    'revision' => 'danger', // ← TAMBAHKAN dengan warna merah
                                     'proposed' => 'warning',
                                     'approved' => 'success',
-                                    'running' => 'primary',
+                                    'running' => 'darkGreen',
                                     'completed' => 'info',
                                     'cancelled' => 'danger',
                                 ];
@@ -405,10 +478,10 @@ class TrainingClassResource extends Resource
                             ])
                             ->default('draft')
                             ->required()
-                            ->disabled(fn($record) => $record && !in_array($record->status, ['draft', 'proposed']))
+                            ->disabled(fn($record) => $record && !in_array($record->status, ['draft', 'revision', 'proposed'])) // ← TAMBAHKAN 'revision'
                             ->dehydrated(true)
                             ->helperText(function ($record) {
-                                if ($record && !in_array($record->status, ['draft', 'proposed'])) {
+                                if ($record && !in_array($record->status, ['draft', 'revision', 'proposed'])) { // ← TAMBAHKAN 'revision'
                                     return 'Status tidak dapat diubah karena sudah ' . match ($record->status) {
                                         'approved' => 'disetujui',
                                         'running' => 'berjalan',
@@ -536,17 +609,13 @@ class TrainingClassResource extends Resource
                 Tables\Columns\BadgeColumn::make('status')
                     ->colors([
                         'secondary' => 'draft',
+                        'danger' => 'revision', // ← TAMBAHKAN dengan warna merah
                         'warning' => 'proposed',
                         'success' => 'approved',
-                        'primary' => 'running',
+                        'darkGreen' => 'running',
                         'info' => 'completed',
-                        'danger' => 'cancelled',
+                        'cancel' => 'cancelled',
                     ]),
-
-                Tables\Columns\TextColumn::make('approver.name')
-                    ->label('Approved By')
-                    ->default('-')
-                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('scenario')
@@ -555,6 +624,7 @@ class TrainingClassResource extends Resource
                 Tables\Filters\SelectFilter::make('status')
                     ->options([
                         'draft' => 'Draft',
+                        'revision' => 'Revision',
                         'proposed' => 'Proposed',
                         'approved' => 'Approved',
                         'running' => 'Running',
@@ -618,7 +688,7 @@ class TrainingClassResource extends Resource
                     ])
                     ->action(function ($record, array $data) {
                         $record->update([
-                            'status' => 'draft',
+                            'status' => 'revision',
                             'approved_by' => auth()->id(),
                             'approved_at' => now(),
                             'approval_notes' => $data['approval_notes'],
@@ -638,7 +708,7 @@ class TrainingClassResource extends Resource
                 Tables\Actions\EditAction::make(),
 
                 Tables\Actions\DeleteAction::make()
-                    ->visible(fn($record) => auth()->user()->isAdmin() || $record->status === 'draft'),
+                    ->visible(fn($record) => auth()->user()->isAdmin() || in_array($record->status, ['draft', 'revision'])),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
