@@ -367,7 +367,9 @@ class TrainingClassResource extends Resource
                         Forms\Components\TextInput::make('admin_days')
                             ->label('Jumlah Hari Administrasi')
                             ->numeric()
-                            ->default(0),
+                            ->default(0)
+                            ->readOnly()
+                            ->helperText('Dihitung otomatis dari tanggal mulai & selesai'),
 
                         Forms\Components\TextInput::make('participant_count')
                             ->label('Jumlah Peserta')

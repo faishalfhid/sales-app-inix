@@ -110,14 +110,44 @@ class CreateTrainingClass extends CreateRecord
 
             Step::make('Detail Pelatihan')
                 ->schema([
-                    Forms\Components\TextInput::make('training_days')
-                        ->label('Jumlah Hari Pelatihan')
-                        ->numeric()
-                        ->default(0)
-                        ->required(),
+                    Forms\Components\DatePicker::make('start_date')
+                        ->label('Tanggal Mulai')
+                        ->minDate(now())
+                        ->live(onBlur: true)
+                        ->afterStateUpdated(function (Forms\Set $set, Forms\Get $get, $state) {
+                            $start = $state;
+                            $end = $get('end_date');
+
+                            if ($start && $end) {
+                                $days = \Carbon\Carbon::parse($start)->diffInDays(\Carbon\Carbon::parse($end)) + 1;
+                                $set('admin_days', max(0, $days));
+                            }
+                        }),
+
+                    Forms\Components\DatePicker::make('end_date')
+                        ->label('Tanggal Selesai')
+                        ->minDate(fn(Forms\Get $get) => $get('start_date') ?? now())
+                        ->live(onBlur: true)
+                        ->afterStateUpdated(function (Forms\Set $set, Forms\Get $get, $state) {
+                            $start = $get('start_date');
+                            $end = $state;
+
+                            if ($start && $end) {
+                                $days = \Carbon\Carbon::parse($start)->diffInDays(\Carbon\Carbon::parse($end)) + 1;
+                                $set('admin_days', max(0, $days));
+                            }
+                        }),
 
                     Forms\Components\TextInput::make('admin_days')
                         ->label('Jumlah Hari Administrasi')
+                        ->numeric()
+                        ->default(0)
+                        ->required()
+                        ->readOnly()
+                        ->helperText('Dihitung otomatis dari tanggal mulai & selesai'),
+
+                    Forms\Components\TextInput::make('training_days')
+                        ->label('Jumlah Hari Pelatihan')
                         ->numeric()
                         ->default(0),
 
@@ -127,12 +157,6 @@ class CreateTrainingClass extends CreateRecord
                         ->default(0)
                         ->required()
                         ->live(onBlur: true),
-
-                    Forms\Components\DatePicker::make('start_date')
-                        ->label('Tanggal Mulai'),
-
-                    Forms\Components\DatePicker::make('end_date')
-                        ->label('Tanggal Selesai'),
                 ])
                 ->columns(2),
 
