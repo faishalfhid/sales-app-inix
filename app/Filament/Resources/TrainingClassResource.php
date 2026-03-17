@@ -40,25 +40,27 @@ class TrainingClassResource extends Resource
         return $query;
     }
 
+    public static function parseRupiah(mixed $value): int
+    {
+        return (int) preg_replace('/\D/', '', $value ?? '0');
+    }
+
     // Method untuk kalkulasi real cost dan pass cost
     protected static function calculateRealCost(Get $get): float
     {
         $scenarioId = $get('scenario_id');
-
-        if (!$scenarioId) {
+        if (!$scenarioId)
             return 0;
-        }
 
-        // Ambil semua cost components yang memiliki nature 'R' (Real)
         $components = CostComponent::query()
             ->whereHas('scenarioRules', fn($q) => $q->where('scenario_id', $scenarioId))
-            ->where('nature', 'R') // ← Filter berdasarkan nature
+            ->where('nature', 'R')
             ->get();
 
         $total = 0;
         foreach ($components as $component) {
             $unit = (int) ($get("unit_{$component->id}") ?? 0);
-            $unitCost = (int) ($get("unit_cost_{$component->id}") ?? 0);
+            $unitCost = self::parseRupiah($get("unit_cost_{$component->id}"));
             $total += $unit * $unitCost;
         }
 
@@ -68,62 +70,50 @@ class TrainingClassResource extends Resource
     protected static function calculatePassCost(Get $get): float
     {
         $scenarioId = $get('scenario_id');
-
-        if (!$scenarioId) {
+        if (!$scenarioId)
             return 0;
-        }
 
-        // Ambil semua cost components yang memiliki nature 'L' (Pass/Lainnya)
         $components = CostComponent::query()
             ->whereHas('scenarioRules', fn($q) => $q->where('scenario_id', $scenarioId))
-            ->where('nature', 'L') // ← Filter berdasarkan nature
+            ->where('nature', 'L')
             ->get();
 
         $total = 0;
         foreach ($components as $component) {
             $unit = (int) ($get("unit_{$component->id}") ?? 0);
-            $unitCost = (int) ($get("unit_cost_{$component->id}") ?? 0);
+            $unitCost = self::parseRupiah($get("unit_cost_{$component->id}"));
             $total += $unit * $unitCost;
         }
 
         return $total;
     }
 
-    // Method untuk kalkulasi total cost
     public static function calculateTotalCost(Get $get, $scenarioId = null): int
     {
-        if (!$scenarioId) {
+        if (!$scenarioId)
             $scenarioId = $get('scenario_id');
-        }
-
-        if (!$scenarioId) {
+        if (!$scenarioId)
             return 0;
-        }
 
         $components = CostComponent::query()
-            ->whereHas(
-                'scenarioRules',
-                fn($q) =>
-                $q->where('scenario_id', $scenarioId)
-            )
+            ->whereHas('scenarioRules', fn($q) => $q->where('scenario_id', $scenarioId))
             ->get();
 
         $total = 0;
         foreach ($components as $component) {
             $unit = (int) ($get("unit_{$component->id}") ?? 0);
-            $unitCost = (int) ($get("unit_cost_{$component->id}") ?? 0);
+            $unitCost = self::parseRupiah($get("unit_cost_{$component->id}"));
             $total += $unit * $unitCost;
         }
 
         return $total;
     }
 
-    // Method untuk kalkulasi revenue
     public static function calculateRevenue(Get $get): int
     {
         $participantCount = (int) ($get('participant_count') ?? 0);
-        $pricePerParticipant = (int) ($get('price_per_participant') ?? 0);
-        $discount = (int) ($get('discount') ?? 0);
+        $pricePerParticipant = self::parseRupiah($get('price_per_participant'));
+        $discount = self::parseRupiah($get('discount'));
 
         return ($participantCount * $pricePerParticipant) - $discount;
     }
@@ -203,7 +193,7 @@ class TrainingClassResource extends Resource
                             Forms\Components\Placeholder::make('price_per_participant_display')
                                 ->label('Harga per Peserta')
                                 ->content(function (Get $get) {
-                                    $price = (int) ($get('price_per_participant') ?? 0);
+                                    $price = self::parseRupiah($get('price_per_participant')); // ← ganti ini
                                     return 'Rp ' . number_format($price, 0, ',', '.');
                                 })
                                 ->live(),
@@ -264,12 +254,10 @@ class TrainingClassResource extends Resource
                         ->default(0)
                         ->live(onBlur: true),
 
-                    Forms\Components\TextInput::make("unit_cost_{$component->id}")
-                        ->label('Harga Satuan')
-                        ->numeric()
-                        ->prefix('Rp')
+                    self::currencyInput("unit_cost_{$component->id}", 'Harga Satuan')
                         ->default(0)
                         ->live(onBlur: true),
+
 
                     Forms\Components\Placeholder::make("subtotal_{$component->id}")
                         ->label('Subtotal')
@@ -277,7 +265,7 @@ class TrainingClassResource extends Resource
                             fn(Forms\Get $get) =>
                             'Rp ' . number_format(
                                 ((int) ($get("unit_{$component->id}") ?? 0)) *
-                                ((int) ($get("unit_cost_{$component->id}") ?? 0)),
+                                self::parseRupiah($get("unit_cost_{$component->id}")),
                                 0,
                                 ',',
                                 '.'
@@ -450,17 +438,10 @@ class TrainingClassResource extends Resource
 
                 Forms\Components\Section::make('Harga & Revenue')
                     ->schema([
-                        Forms\Components\TextInput::make('price_per_participant')
-                            ->label('Harga Real/Peserta')
-                            ->numeric()
-                            ->prefix('Rp')
-                            ->required()
+                        self::currencyInput('price_per_participant', 'Harga Real/Peserta', required: true)
                             ->live(onBlur: true),
 
-                        Forms\Components\TextInput::make('discount')
-                            ->label('Diskon')
-                            ->numeric()
-                            ->prefix('Rp')
+                        self::currencyInput('discount', 'Diskon')
                             ->default(0)
                             ->live(onBlur: true),
 
@@ -615,13 +596,10 @@ class TrainingClassResource extends Resource
                                                 $total = 0;
                                                 foreach ($category->costComponents as $component) {
                                                     $unit = (int) ($get("unit_{$component->id}") ?? 0);
-                                                    $unitCost = (int) ($get("unit_cost_{$component->id}") ?? 0);
+                                                    $unitCost = TrainingClassResource::parseRupiah($get("unit_cost_{$component->id}"));
                                                     $total += $unit * $unitCost;
                                                 }
-
-                                                return $total > 0
-                                                    ? 'Rp ' . number_format($total, 0, ',', '.')
-                                                    : null;
+                                                return $total > 0 ? 'Rp ' . number_format($total, 0, ',', '.') : null;
                                             })
                                             ->schema([
                                                 Forms\Components\Grid::make(1)
@@ -796,5 +774,35 @@ class TrainingClassResource extends Resource
             'create' => Pages\CreateTrainingClass::route('/create'),
             'edit' => Pages\EditTrainingClass::route('/{record}/edit'),
         ];
+    }
+
+    public static function currencyInput(string $field, string $label, bool $required = false): Forms\Components\TextInput
+    {
+        return Forms\Components\TextInput::make($field)
+            ->label($label)
+            ->required($required)
+            ->numeric(false) // matikan numeric bawaan
+            ->prefix('Rp')
+            ->extraInputAttributes([
+                'x-data' => '{}',
+                'x-on:input' => '
+                let raw = $event.target.value.replace(/\D/g, "");
+                $event.target.value = raw === "" ? "" : parseInt(raw).toLocaleString("id-ID");
+            ',
+                'x-on:blur' => '
+                let raw = $event.target.value.replace(/\D/g, "");
+                $event.target.value = raw === "" ? "" : parseInt(raw).toLocaleString("id-ID");
+            ',
+                'inputmode' => 'numeric',
+            ])
+            ->dehydrateStateUsing(fn($state) => (int) preg_replace('/\D/', '', $state ?? '0'))
+            ->afterStateHydrated(function ($component, $state) {
+                $numeric = (int) preg_replace('/\D/', '', $state ?? '0');
+                if ($numeric > 0) {
+                    $component->state(number_format($numeric, 0, ',', '.'));
+                } else {
+                    $component->state('0');
+                }
+            });
     }
 }

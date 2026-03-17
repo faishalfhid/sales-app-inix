@@ -37,25 +37,22 @@ class TrainingClass extends Model
         'approved_at',
         'selected_dates',
     ];
-
     protected $casts = [
         'training_days' => 'integer',
         'admin_days' => 'integer',
         'participant_count' => 'integer',
-        'price_per_participant' => 'decimal:2',
-        'discount' => 'decimal:2',
-        'price_after_discount' => 'decimal:2',
-        'total_revenue' => 'decimal:2',
-        'real_revenue' => 'decimal:2',
-        'total_cost' => 'decimal:2',
-        'net_profit' => 'decimal:2',
-        'net_profit_margin' => 'decimal:2',
+        'price_per_participant' => 'integer', // ← ubah dari decimal:2
+        'discount' => 'integer',  // ← ubah dari decimal:2
+        'price_after_discount' => 'integer',  // ← ubah dari decimal:2
+        'total_revenue' => 'integer',  // ← ubah dari decimal:2
+        'real_revenue' => 'integer',  // ← ubah dari decimal:2
+        'total_cost' => 'integer',  // ← ubah dari decimal:2
+        'net_profit' => 'integer',  // ← ubah dari decimal:2
+        'net_profit_margin' => 'decimal:2', // ← ini tetap decimal karena persentase
         'start_date' => 'date',
         'end_date' => 'date',
         'approved_at' => 'datetime',
         'selected_dates' => 'array',
-
-
     ];
     /* ================= GET SALES ID BY USER ID ================= */
     public function sales()

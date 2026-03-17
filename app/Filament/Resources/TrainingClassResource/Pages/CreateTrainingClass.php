@@ -195,17 +195,10 @@ class CreateTrainingClass extends CreateRecord
 
             Step::make('Harga & Status')
                 ->schema([
-                    Forms\Components\TextInput::make('price_per_participant')
-                        ->label('Harga Real/Peserta')
-                        ->numeric()
-                        ->prefix('Rp')
-                        ->required()
+                    TrainingClassResource::currencyInput('price_per_participant', 'Harga Real/Peserta', required: true)
                         ->live(onBlur: true),
 
-                    Forms\Components\TextInput::make('discount')
-                        ->label('Diskon')
-                        ->numeric()
-                        ->prefix('Rp')
+                    TrainingClassResource::currencyInput('discount', 'Diskon')
                         ->default(0)
                         ->live(onBlur: true),
 
@@ -257,13 +250,10 @@ class CreateTrainingClass extends CreateRecord
                                             $total = 0;
                                             foreach ($category->costComponents as $component) {
                                                 $unit = (int) ($get("unit_{$component->id}") ?? 0);
-                                                $unitCost = (int) ($get("unit_cost_{$component->id}") ?? 0);
+                                                $unitCost = TrainingClassResource::parseRupiah($get("unit_cost_{$component->id}"));
                                                 $total += $unit * $unitCost;
                                             }
-
-                                            return $total > 0
-                                                ? 'Rp ' . number_format($total, 0, ',', '.')
-                                                : null;
+                                            return $total > 0 ? 'Rp ' . number_format($total, 0, ',', '.') : null;
                                         })
                                         ->schema([
                                             Forms\Components\Grid::make(1)
