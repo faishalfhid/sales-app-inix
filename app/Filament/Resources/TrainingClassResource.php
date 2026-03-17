@@ -358,18 +358,34 @@ class TrainingClassResource extends Resource
 
                 Forms\Components\Section::make('Detail Pelatihan')
                     ->schema([
+                        Forms\Components\Toggle::make('use_multiple_dates')
+                            ->label('Tanggal lompat-lompat?')
+                            ->helperText('Aktifkan untuk memilih beberapa tanggal tidak berurutan')
+                            ->live()
+                            ->afterStateHydrated(function ($component, $record) {
+                                // Set state berdasarkan record saat form di-hydrate (edit mode)
+                                if ($record) {
+                                    $component->state(!empty($record->selected_dates));
+                                }
+                            })
+                            ->default(false)
+                            ->columnSpanFull(),
+
+                        // ── MODE BIASA ──────────────────────────────────────────────
                         Forms\Components\TextInput::make('training_days')
                             ->label('Jumlah Hari Pelatihan')
                             ->numeric()
                             ->default(0)
-                            ->required(),
+                            ->required()
+                            ->visible(fn(Get $get) => !$get('use_multiple_dates')),
 
                         Forms\Components\TextInput::make('admin_days')
                             ->label('Jumlah Hari Administrasi')
                             ->numeric()
                             ->default(0)
                             ->readOnly()
-                            ->helperText('Dihitung otomatis dari tanggal mulai & selesai'),
+                            ->helperText('Dihitung otomatis dari tanggal mulai & selesai')
+                            ->visible(fn(Get $get) => !$get('use_multiple_dates')),
 
                         Forms\Components\TextInput::make('participant_count')
                             ->label('Jumlah Peserta')
@@ -379,10 +395,56 @@ class TrainingClassResource extends Resource
                             ->live(onBlur: true),
 
                         Forms\Components\DatePicker::make('start_date')
-                            ->label('Tanggal Mulai'),
+                            ->label('Tanggal Mulai')
+                            ->live(onBlur: true)
+                            ->visible(fn(Get $get) => !$get('use_multiple_dates'))
+                            ->afterStateUpdated(function (Forms\Set $set, Forms\Get $get, $state) {
+                                if (!empty($get('selected_dates')))
+                                    return;
+                                $end = $get('end_date');
+                                if ($state && $end) {
+                                    $days = \Carbon\Carbon::parse($state)
+                                        ->diffInDays(\Carbon\Carbon::parse($end)) + 1;
+                                    $set('admin_days', max(0, $days));
+                                }
+                            }),
 
                         Forms\Components\DatePicker::make('end_date')
-                            ->label('Tanggal Selesai'),
+                            ->label('Tanggal Selesai')
+                            ->live(onBlur: true)
+                            ->visible(fn(Get $get) => !$get('use_multiple_dates'))
+                            ->afterStateUpdated(function (Forms\Set $set, Forms\Get $get, $state) {
+                                if (!empty($get('selected_dates')))
+                                    return;
+                                $start = $get('start_date');
+                                if ($start && $state) {
+                                    $days = \Carbon\Carbon::parse($start)
+                                        ->diffInDays(\Carbon\Carbon::parse($state)) + 1;
+                                    $set('admin_days', max(0, $days));
+                                }
+                            }),
+
+                        // ── MODE MULTI-DATE ──────────────────────────────────────────
+                        \App\Forms\Components\MultiDatePickerField::make('selected_dates')
+                            ->label('Pilih Tanggal Pelatihan')
+                            ->helperText('Klik tanggal untuk memilih/batal. Bisa pilih banyak tanggal.')
+                            ->visible(fn(Get $get) => (bool) $get('use_multiple_dates'))
+                            ->columnSpanFull(),
+
+                        Forms\Components\TextInput::make('training_days')
+                            ->label('Jumlah Hari Pelatihan')
+                            ->numeric()
+                            ->default(0)
+                            ->required()
+                            ->visible(fn(Get $get) => (bool) $get('use_multiple_dates')),
+
+                        Forms\Components\TextInput::make('admin_days')
+                            ->label('Jumlah Hari Administrasi')
+                            ->numeric()
+                            ->default(0)
+                            ->readOnly()
+                            ->helperText('Dihitung otomatis dari jumlah tanggal dipilih')
+                            ->visible(fn(Get $get) => (bool) $get('use_multiple_dates')),
                     ])
                     ->columns(2),
 

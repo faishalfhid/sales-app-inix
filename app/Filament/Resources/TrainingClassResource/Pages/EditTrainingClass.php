@@ -15,78 +15,91 @@ class EditTrainingClass extends EditRecord
     protected function mutateFormDataBeforeFill(array $data): array
     {
         $this->record->load('costDetails.costComponent.category');
-        
+
+        // Pastikan selected_dates di-cast sebagai array di model
+        $data['use_multiple_dates'] = !empty($this->record->selected_dates);
+
         foreach ($this->record->costDetails as $detail) {
             $componentId = $detail->cost_component_id;
             $data["unit_{$componentId}"] = $detail->unit;
             $data["unit_cost_{$componentId}"] = $detail->unit_cost;
         }
-        
+
         return $data;
     }
 
     protected function mutateFormDataBeforeSave(array $data): array
     {
+        // ── Logika multi-date ────────────────────────────────────────────
+        if (empty($data['use_multiple_dates'])) {
+            $data['selected_dates'] = null;
+        } else {
+            $dates = $data['selected_dates'] ?? [];
+            if (!empty($dates)) {
+                sort($dates);
+                $data['start_date'] = $dates[0];
+                $data['end_date'] = end($dates);
+                $data['admin_days'] = count($dates);
+            }
+        }
+
+        unset($data['use_multiple_dates']);
+
+        // ── Validasi status berdasarkan role ─────────────────────────────
         $user = auth()->user();
         $originalStatus = $this->record->getOriginal('status');
         $newStatus = $data['status'] ?? $originalStatus;
 
-        // Validasi berdasarkan role
         if ($user->isStaff()) {
-            // Staff: hanya bisa set draft atau proposed
             if (in_array($originalStatus, ['approved', 'running', 'completed', 'cancelled'])) {
                 $data['status'] = $originalStatus;
-                
+
                 Notification::make()
                     ->warning()
                     ->title('Status Tidak Dapat Diubah')
                     ->body('Status sudah diproses oleh manajemen dan tidak dapat diubah.')
                     ->send();
-            }
-            elseif (!in_array($newStatus, ['draft', 'proposed'])) {
+            } elseif (!in_array($newStatus, ['draft', 'proposed'])) {
                 $data['status'] = 'proposed';
-                
+
                 Notification::make()
                     ->warning()
                     ->title('Status Dibatasi')
                     ->body('Anda hanya dapat mengatur status Draft atau Proposed.')
                     ->send();
             }
-        }
-        elseif ($user->canApprove() && !$user->isAdmin()) {
-            // Direktur/GM: tidak bisa ubah status lewat form, harus pakai button Approve/Revise
+        } elseif ($user->canApprove() && !$user->isAdmin()) {
             $data['status'] = $originalStatus;
         }
-        // Admin: bebas mengubah status
 
+        // ── Kumpulkan cost details ───────────────────────────────────────
         $scenarioId = $data['scenario_id'] ?? $this->record->scenario_id;
-        
+
         if (!$scenarioId) {
             return $data;
         }
 
         $components = CostComponent::query()
-            ->whereHas('scenarioRules', fn($q) => 
-                $q->where('scenario_id', $scenarioId)
-            )
+            ->whereHas('scenarioRules', fn($q) =>
+                $q->where('scenario_id', $scenarioId))
             ->get();
-        
+
         $this->costDetailsData = [];
-        
+
         foreach ($components as $component) {
             $unit = $data["unit_{$component->id}"] ?? 0;
             $unitCost = $data["unit_cost_{$component->id}"] ?? 0;
-            
+
             $this->costDetailsData[$component->id] = [
                 'unit' => $unit,
                 'unit_cost' => $unitCost,
             ];
-            
+
             unset($data["unit_{$component->id}"]);
             unset($data["unit_cost_{$component->id}"]);
             unset($data["cost_component_id_{$component->id}"]);
         }
-        
+
         return $data;
     }
 
@@ -94,11 +107,10 @@ class EditTrainingClass extends EditRecord
     {
         $scenarioId = $this->record->scenario_id;
         $validComponentIds = CostComponent::query()
-            ->whereHas('scenarioRules', fn($q) => 
-                $q->where('scenario_id', $scenarioId)
-            )
+            ->whereHas('scenarioRules', fn($q) =>
+                $q->where('scenario_id', $scenarioId))
             ->pluck('id');
-        
+
         $this->record->costDetails()
             ->whereNotIn('cost_component_id', $validComponentIds)
             ->delete();
@@ -111,7 +123,7 @@ class EditTrainingClass extends EditRecord
                 );
             }
         }
-        
+
         $this->record->load('costDetails.costComponent');
         $this->record->recalculate();
     }
@@ -126,7 +138,6 @@ class EditTrainingClass extends EditRecord
         $user = auth()->user();
         $actions = [];
 
-        // Actions untuk Direktur/GM (Approve & Revise)
         if ($user->canApprove() && !$user->isAdmin()) {
             if ($this->record->status === 'proposed') {
                 $actions[] = Actions\Action::make('approve')
@@ -193,7 +204,6 @@ class EditTrainingClass extends EditRecord
             }
         }
 
-        // Delete action
         if ($user->isAdmin() || $this->record->status === 'draft') {
             $actions[] = Actions\DeleteAction::make();
         }

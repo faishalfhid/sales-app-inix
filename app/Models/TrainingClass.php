@@ -35,6 +35,7 @@ class TrainingClass extends Model
         'approval_notes',
         'approved_by',
         'approved_at',
+        'selected_dates',
     ];
 
     protected $casts = [
@@ -52,7 +53,9 @@ class TrainingClass extends Model
         'start_date' => 'date',
         'end_date' => 'date',
         'approved_at' => 'datetime',
-        
+        'selected_dates' => 'array',
+
+
     ];
     /* ================= GET SALES ID BY USER ID ================= */
     public function sales()

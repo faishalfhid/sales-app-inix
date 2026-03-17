@@ -9,6 +9,8 @@ use Filament\Forms\Components\Wizard\Step;
 use Filament\Forms;
 use Filament\Forms\Components\Tabs;
 use App\Models\CostComponent;
+use App\Forms\Components\MultiDatePickerField;
+
 
 class CreateTrainingClass extends CreateRecord
 {
@@ -23,6 +25,21 @@ class CreateTrainingClass extends CreateRecord
 
         $data['sales_id'] = $user->id;
         $data['sales_name'] = $user->name;
+
+        // Kalau mode biasa, kosongkan selected_dates
+        if (empty($data['use_multiple_dates'])) {
+            $data['selected_dates'] = null;
+        } else {
+            // start_date & end_date diisi dari range selected_dates
+            $dates = $data['selected_dates'] ?? [];
+            if (!empty($dates)) {
+                sort($dates);
+                $data['start_date'] = $dates[0];
+                $data['end_date'] = end($dates);
+            }
+        }
+
+        unset($data['use_multiple_dates']);
 
         // ===============================
         // LOGIC LAMA KAMU (TETAP)
@@ -110,16 +127,23 @@ class CreateTrainingClass extends CreateRecord
 
             Step::make('Detail Pelatihan')
                 ->schema([
+                    Forms\Components\Toggle::make('use_multiple_dates')
+                        ->label('Tanggal lompat-lompat?')
+                        ->helperText('Aktifkan untuk memilih beberapa tanggal tidak berurutan')
+                        ->live()
+                        ->default(false)
+                        ->columnSpanFull(),
+
+                    // ── MODE BIASA ───────────────────────────────────────────────────
                     Forms\Components\DatePicker::make('start_date')
                         ->label('Tanggal Mulai')
                         ->minDate(now())
                         ->live(onBlur: true)
+                        ->visible(fn(Forms\Get $get) => !$get('use_multiple_dates'))
                         ->afterStateUpdated(function (Forms\Set $set, Forms\Get $get, $state) {
-                            $start = $state;
                             $end = $get('end_date');
-
-                            if ($start && $end) {
-                                $days = \Carbon\Carbon::parse($start)->diffInDays(\Carbon\Carbon::parse($end)) + 1;
+                            if ($state && $end) {
+                                $days = \Carbon\Carbon::parse($state)->diffInDays(\Carbon\Carbon::parse($end)) + 1;
                                 $set('admin_days', max(0, $days));
                             }
                         }),
@@ -128,28 +152,37 @@ class CreateTrainingClass extends CreateRecord
                         ->label('Tanggal Selesai')
                         ->minDate(fn(Forms\Get $get) => $get('start_date') ?? now())
                         ->live(onBlur: true)
+                        ->visible(fn(Forms\Get $get) => !$get('use_multiple_dates'))
                         ->afterStateUpdated(function (Forms\Set $set, Forms\Get $get, $state) {
                             $start = $get('start_date');
-                            $end = $state;
-
-                            if ($start && $end) {
-                                $days = \Carbon\Carbon::parse($start)->diffInDays(\Carbon\Carbon::parse($end)) + 1;
+                            if ($start && $state) {
+                                $days = \Carbon\Carbon::parse($start)->diffInDays(\Carbon\Carbon::parse($state)) + 1;
                                 $set('admin_days', max(0, $days));
                             }
                         }),
 
+                    // ── MODE MULTI-DATE ──────────────────────────────────────────────
+                    MultiDatePickerField::make('selected_dates')
+                        ->label('Pilih Tanggal Pelatihan')
+                        ->helperText('Klik tanggal untuk memilih/batal. Bisa pilih banyak tanggal.')
+                        ->visible(fn(Forms\Get $get) => (bool) $get('use_multiple_dates'))
+                        ->columnSpanFull(),
+
+                    // ── FIELD BERSAMA ────────────────────────────────────────────────
                     Forms\Components\TextInput::make('admin_days')
                         ->label('Jumlah Hari Administrasi')
                         ->numeric()
                         ->default(0)
                         ->required()
                         ->readOnly()
-                        ->helperText('Dihitung otomatis dari tanggal mulai & selesai'),
+                        ->helperText('Dihitung otomatis')
+                        ->columnSpan(1),
 
                     Forms\Components\TextInput::make('training_days')
                         ->label('Jumlah Hari Pelatihan')
                         ->numeric()
-                        ->default(0),
+                        ->default(0)
+                        ->columnSpan(1),
 
                     Forms\Components\TextInput::make('participant_count')
                         ->label('Jumlah Peserta')
