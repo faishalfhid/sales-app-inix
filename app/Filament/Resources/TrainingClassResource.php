@@ -33,8 +33,14 @@ class TrainingClassResource extends Resource
     {
         $query = parent::getEloquentQuery();
 
-        if (auth()->user()->role === 'staff') {
-            $query->where('sales_id', auth()->id());
+        $user = auth()->user();
+
+        if ($user->isStaff()) {
+            // Staff hanya lihat kelas milik sendiri
+            $query->where('sales_id', $user->id);
+        } else {
+            // Direktur, GM, Admin hanya lihat kelas selain draft
+            $query->where('status', '!=', 'draft');
         }
 
         return $query;
