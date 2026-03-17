@@ -8,13 +8,10 @@ use Flowframe\Trend\Trend;
 use Flowframe\Trend\TrendValue;
 use Illuminate\Support\Facades\Auth;
 
-
 class RevenueChartWidget extends ChartWidget
 {
     protected static ?string $heading = 'Revenue & Profit';
-
     protected static ?int $sort = 2;
-
     protected static ?string $maxHeight = '300px';
 
     public ?string $filter = '30';
@@ -22,24 +19,21 @@ class RevenueChartWidget extends ChartWidget
     protected function getData(): array
     {
         $activeFilter = (int) $this->filter;
-        $userId = Auth::id();
+        $user = Auth::user();
 
-        $baseQuery = TrainingClass::query()
-            ->where('sales_id', $userId); // 🔥 KUNCI PER SALES
+        // Admin, Direktur, GM → lihat semua data; Staff → hanya milik sendiri
+        $baseQuery = TrainingClass::query();
+        if ($user->isStaff()) {
+            $baseQuery->where('sales_id', $user->id);
+        }
 
-        $revenueData = Trend::query($baseQuery)
-            ->between(
-                start: now()->subDays($activeFilter),
-                end: now(),
-            )
+        $revenueData = Trend::query(clone $baseQuery)
+            ->between(start: now()->subDays($activeFilter), end: now())
             ->perDay()
             ->sum('total_revenue');
 
-        $profitData = Trend::query($baseQuery)
-            ->between(
-                start: now()->subDays($activeFilter),
-                end: now(),
-            )
+        $profitData = Trend::query(clone $baseQuery)
+            ->between(start: now()->subDays($activeFilter), end: now())
             ->perDay()
             ->sum('net_profit');
 
@@ -61,7 +55,6 @@ class RevenueChartWidget extends ChartWidget
             'labels' => $revenueData->map(fn(TrendValue $value) => $value->date),
         ];
     }
-
 
     protected function getType(): string
     {
