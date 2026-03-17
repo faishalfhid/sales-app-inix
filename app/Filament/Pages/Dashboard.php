@@ -13,23 +13,23 @@ class Dashboard extends BaseDashboard
     
     protected static ?string $navigationIcon = 'heroicon-o-home';
 
-    public function filtersForm(Form $form): Form
-    {
-        return $form
-            ->schema([
-                Section::make()
-                    ->schema([
-                        DatePicker::make('startDate')
-                            ->label('Dari Tanggal')
-                            ->default(now()->subDays(30)),
+    // public function filtersForm(Form $form): Form
+    // {
+    //     return $form
+    //         ->schema([
+    //             Section::make()
+    //                 ->schema([
+    //                     DatePicker::make('startDate')
+    //                         ->label('Dari Tanggal')
+    //                         ->default(now()->subDays(30)),
                             
-                        DatePicker::make('endDate')
-                            ->label('Sampai Tanggal')
-                            ->default(now()),
-                    ])
-                    ->columns(2),
-            ]);
-    }
+    //                     DatePicker::make('endDate')
+    //                         ->label('Sampai Tanggal')
+    //                         ->default(now()),
+    //                 ])
+    //                 ->columns(2),
+    //         ]);
+    // }
 
 
     public function getWidgets(): array
